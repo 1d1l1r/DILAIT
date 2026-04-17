@@ -4,194 +4,367 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lights Hub</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/home.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="hero card">
+    <main class="app-shell">
+      <header class="topbar">
         <div>
-          <p class="eyebrow">Local-first BLE control</p>
+          <p class="topbar-kicker">Local-first lights</p>
           <h1>Lights Hub</h1>
-          <p class="muted">
-            Mixed-family groups, reusable scenes, recurring rules, and NFC-ready action links for the local hub.
+        </div>
+        <a class="advanced-link" href="/advanced">Advanced</a>
+      </header>
+
+      <section class="hero-panel">
+        <div>
+          <p class="hero-label">Everyday control</p>
+          <h2>Rooms first. Fast touch controls. No admin noise.</h2>
+          <p class="hero-copy">
+            Control lights, run scenes, schedule routines, and use local action links from a human-friendly mobile shell.
           </p>
         </div>
-        <div class="hero-actions">
-          <button id="refresh-all" class="button">Refresh</button>
-          <button id="discover-devices" class="button button-secondary">Scan BLE</button>
-        </div>
+        <div class="hero-stats" id="hero-stats"></div>
       </section>
 
-      <section class="grid stats" id="dashboard-cards"></section>
+      <nav class="tabbar" aria-label="Primary">
+        <button class="tabbar-button is-active" data-view="rooms">Rooms</button>
+        <button class="tabbar-button" data-view="devices">Devices</button>
+        <button class="tabbar-button" data-view="scenes">Scenes</button>
+        <button class="tabbar-button" data-view="schedules">Schedules</button>
+        <button class="tabbar-button" data-view="links">Links</button>
+      </nav>
 
-      <section class="grid two-up">
-        <article class="card">
-          <h2>Quick Add Room</h2>
-          <form id="room-form" class="stack">
-            <input name="name" placeholder="Living room" required />
-            <input name="sort_order" type="number" value="0" />
-            <button class="button" type="submit">Save room</button>
-          </form>
-          <div id="rooms-list" class="list compact"></div>
-        </article>
-
-        <article class="card">
-          <h2>Onboard Device</h2>
-          <form id="device-form" class="stack">
-            <div id="device-candidate-note" class="tip">Manual entry or pick a discovery candidate below.</div>
-            <input name="name" placeholder="TV backlight" required />
-            <input name="ble_identifier" placeholder="BLE identifier" required />
-            <input name="ble_address" placeholder="BLE address (optional)" />
-            <input name="vendor_name" placeholder="Vendor name (optional)" />
-            <select name="family" id="device-family"></select>
-            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
-            <input name="meta_json" type="hidden" value="{}" />
-            <button class="button" type="submit">Save device</button>
-            <button id="clear-onboarding" class="button button-secondary" type="button">Clear candidate</button>
-          </form>
-        </article>
-      </section>
-
-      <section class="grid two-up">
-        <article class="card">
-          <h2>Devices</h2>
-          <div id="devices-list" class="list"></div>
-        </article>
-
-        <article class="card">
-          <h2>Mixed Groups</h2>
-          <form id="group-form" class="stack inline-form">
-            <input name="name" placeholder="Desk + room blend" required />
-            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
-            <button class="button" type="submit">Create group</button>
-          </form>
-          <form id="group-attach-form" class="stack inline-form">
-            <select name="group_id" id="group-attach-group" required></select>
-            <select name="device_id" id="group-attach-device" required></select>
-            <button class="button button-secondary" type="submit">Attach device</button>
-          </form>
-          <div id="groups-list" class="list"></div>
-        </article>
-      </section>
-
-      <section class="grid two-up">
-        <article class="card">
-          <h2>Scenes</h2>
-          <form id="scene-form" class="stack inline-form">
-            <input name="name" placeholder="Movie mode" required />
-            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
-            <button class="button" type="submit">Create scene</button>
-          </form>
-          <form id="scene-action-form" class="stack">
-            <select name="scene_id" id="scene-action-scene" required></select>
-            <select name="target_type" id="scene-target-type">
-              <option value="device">device</option>
-              <option value="group">group</option>
-            </select>
-            <select name="target_id" id="scene-target-id" required></select>
-            <select name="action_type">
-              <option value="on">on</option>
-              <option value="off">off</option>
-              <option value="brightness">brightness</option>
-              <option value="color">color</option>
-            </select>
-            <textarea name="action_payload_json" rows="4">{"value": 40}</textarea>
-            <button class="button button-secondary" type="submit">Add scene action</button>
-          </form>
-          <div id="scenes-list" class="list"></div>
-        </article>
-
-        <article class="card">
-          <h2>Action Links</h2>
-          <form id="action-link-form" class="stack">
-            <input name="name" placeholder="Desk tap on" required />
-            <input name="token" placeholder="Token (optional)" />
-            <select name="target_type" id="action-link-target-type">
-              <option value="device">device</option>
-              <option value="group">group</option>
-              <option value="scene">scene</option>
-            </select>
-            <select name="target_id" id="action-link-target-id" required></select>
-            <select name="action_type" id="action-link-action-type">
-              <option value="on">on</option>
-              <option value="off">off</option>
-              <option value="toggle">toggle</option>
-              <option value="run_scene">run_scene</option>
-            </select>
-            <label class="checkbox-row">
-              <input name="requires_confirmation" type="checkbox" />
-              <span>Ask for confirmation first</span>
-            </label>
-            <label class="checkbox-row">
-              <input name="is_enabled" type="checkbox" checked />
-              <span>Enabled</span>
-            </label>
-            <button class="button" type="submit">Create action link</button>
-          </form>
-          <div id="action-links-list" class="list"></div>
-        </article>
-      </section>
-
-      <section class="grid two-up">
-        <article class="card">
-          <h2>Rules</h2>
-          <form id="rule-form" class="stack">
-            <input name="name" placeholder="Sunset living room" required />
-            <select name="target_type" id="rule-target-type">
-              <option value="device">device</option>
-              <option value="group">group</option>
-              <option value="scene">scene</option>
-            </select>
-            <select name="target_id" id="rule-target-id" required></select>
-            <select name="rule_type">
-              <option value="recurring">recurring</option>
-              <option value="astronomical">astronomical</option>
-              <option value="once">once</option>
-              <option value="delay">delay</option>
-            </select>
-            <input name="timezone" value="Asia/Qyzylorda" required />
-            <input name="days_of_week_mask" type="number" value="127" required />
-            <textarea name="payload_json" rows="7">{"action":"on","time":"19:00:00"}</textarea>
-            <button class="button" type="submit">Create rule</button>
-          </form>
-          <div class="tip">
-            Try astronomical payload:
-            <code>{"action":"on","solar_event":"sunset","offset_minutes":-20,"lat":43.2389,"lon":76.8897}</code>
+      <section class="view is-active" data-view-panel="rooms">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Home overview</p>
+            <h2>Rooms</h2>
           </div>
-          <div id="rules-list" class="list"></div>
-        </article>
+          <button id="rooms-refresh" class="pill-button">Refresh</button>
+        </div>
 
-        <article class="card">
-          <h2>Discovery + Activity</h2>
-          <div id="discovery-list" class="list"></div>
-          <div id="upcoming-list" class="list compact"></div>
-          <div id="failures-list" class="list compact"></div>
-        </article>
+        <form id="room-form" class="card form-card compact-form">
+          <div>
+            <p class="section-kicker">Add room</p>
+            <h3>Make rooms the default entry point</h3>
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span>Room name</span>
+              <input name="name" placeholder="Living room" required />
+            </label>
+            <label class="field">
+              <span>Sort order</span>
+              <input name="sort_order" type="number" value="0" />
+            </label>
+          </div>
+          <button class="primary-button" type="submit">Save room</button>
+        </form>
+
+        <div id="rooms-grid" class="room-grid"></div>
+
+        <section id="room-detail" class="card detail-panel is-hidden">
+          <div id="room-detail-body"></div>
+        </section>
+      </section>
+
+      <section class="view" data-view-panel="devices">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Everyday control</p>
+            <h2>Devices</h2>
+          </div>
+          <button id="devices-refresh" class="pill-button">Refresh</button>
+        </div>
+
+        <section class="card onboarding-card">
+          <div class="split-heading">
+            <div>
+              <p class="section-kicker">Discovery</p>
+              <h3>Add a new light</h3>
+            </div>
+            <button id="discover-devices" class="primary-button" type="button">Scan for lights</button>
+          </div>
+          <p id="discovery-status" class="body-copy muted">Discovery is idle.</p>
+
+          <div id="candidate-onboarding" class="candidate-onboarding is-hidden">
+            <div class="candidate-badge">Ready to add</div>
+            <h4 id="candidate-title"></h4>
+            <p id="candidate-subtitle" class="muted"></p>
+            <form id="device-form" class="compact-form">
+              <div class="field-grid">
+                <label class="field">
+                  <span>Name</span>
+                  <input name="name" placeholder="Desk light" required />
+                </label>
+                <label class="field">
+                  <span>Room</span>
+                  <select name="room_id" id="device-room-select"></select>
+                </label>
+              </div>
+              <input name="family" type="hidden" />
+              <input name="ble_identifier" type="hidden" />
+              <input name="ble_address" type="hidden" />
+              <input name="vendor_name" type="hidden" />
+              <input name="meta_json" type="hidden" value="{}" />
+              <div class="inline-actions">
+                <button class="primary-button" type="submit">Add light</button>
+                <button id="clear-onboarding" class="ghost-button" type="button">Cancel</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="discovery-columns">
+            <section class="discovery-section">
+              <div class="section-heading compact-heading">
+                <div>
+                  <p class="section-kicker">Primary list</p>
+                  <h3>New supported devices</h3>
+                </div>
+              </div>
+              <div id="discovery-supported" class="stack-list"></div>
+            </section>
+
+            <details class="discovery-section secondary-section">
+              <summary>Already added devices</summary>
+              <div id="discovery-existing" class="stack-list nested-list"></div>
+            </details>
+
+            <details class="discovery-section secondary-section">
+              <summary>Other / unsupported BLE devices</summary>
+              <div id="discovery-other" class="stack-list nested-list"></div>
+            </details>
+          </div>
+        </section>
+
+        <div id="devices-grid" class="device-grid"></div>
+      </section>
+
+      <section class="view" data-view-panel="scenes">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Reusable presets</p>
+            <h2>Scenes</h2>
+          </div>
+          <a class="pill-button subtle-link" href="/advanced">Advanced editing</a>
+        </div>
+
+        <form id="scene-form" class="card form-card compact-form">
+          <div>
+            <p class="section-kicker">Quick create</p>
+            <h3>Create a scene shell</h3>
+          </div>
+          <div class="field-grid">
+            <label class="field">
+              <span>Scene name</span>
+              <input name="name" placeholder="Movie mode" required />
+            </label>
+            <label class="field">
+              <span>Room</span>
+              <select name="room_id" id="scene-room-select"></select>
+            </label>
+          </div>
+          <button class="primary-button" type="submit">Create scene</button>
+        </form>
+
+        <div id="scenes-grid" class="scene-grid"></div>
+      </section>
+
+      <section class="view" data-view-panel="schedules">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Automation</p>
+            <h2>Schedules</h2>
+          </div>
+          <a class="pill-button subtle-link" href="/advanced">Advanced rules</a>
+        </div>
+
+        <form id="schedule-form" class="card form-card schedule-form">
+          <div>
+            <p class="section-kicker">New schedule</p>
+            <h3>Make a routine without raw JSON</h3>
+          </div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Name</span>
+              <input name="name" placeholder="Weeknight glow" required />
+            </label>
+            <label class="field">
+              <span>Target type</span>
+              <select name="target_type" id="schedule-target-type">
+                <option value="device">Device</option>
+                <option value="group">Group</option>
+                <option value="scene">Scene</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Target</span>
+              <select name="target_id" id="schedule-target-id"></select>
+            </label>
+            <label class="field">
+              <span>Rule type</span>
+              <select name="rule_type" id="schedule-rule-type">
+                <option value="delay">Delay</option>
+                <option value="once">Once</option>
+                <option value="recurring">Recurring</option>
+                <option value="astronomical">Astronomical</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Action</span>
+              <select name="action" id="schedule-action"></select>
+            </label>
+            <label class="field">
+              <span>Timezone</span>
+              <input name="timezone" id="schedule-timezone" value="Asia/Qyzylorda" required />
+            </label>
+          </div>
+
+          <div class="field-grid" id="schedule-action-fields">
+            <label class="field is-hidden" data-action-field="brightness">
+              <span>Brightness</span>
+              <input name="brightness_value" type="range" min="0" max="100" value="60" />
+            </label>
+            <label class="field is-hidden" data-action-field="color">
+              <span>Color</span>
+              <input name="color_value" type="color" value="#6de9ff" />
+            </label>
+          </div>
+
+          <div class="field-grid" id="schedule-delay-fields">
+            <label class="field">
+              <span>Delay seconds</span>
+              <input name="delay_seconds" type="number" min="0" value="5" />
+            </label>
+          </div>
+
+          <div class="field-grid is-hidden" id="schedule-once-fields">
+            <label class="field">
+              <span>Run at</span>
+              <input name="run_at" type="datetime-local" />
+            </label>
+          </div>
+
+          <div class="field-grid is-hidden" id="schedule-recurring-fields">
+            <label class="field">
+              <span>Time</span>
+              <input name="recurring_time" type="time" value="19:00" />
+            </label>
+          </div>
+
+          <div class="field-grid is-hidden" id="schedule-astronomical-fields">
+            <label class="field">
+              <span>Solar event</span>
+              <select name="solar_event">
+                <option value="sunset">Sunset</option>
+                <option value="sunrise">Sunrise</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Offset minutes</span>
+              <input name="offset_minutes" type="number" value="-20" />
+            </label>
+            <label class="field">
+              <span>Latitude</span>
+              <input name="lat" type="number" step="0.0001" value="43.2389" />
+            </label>
+            <label class="field">
+              <span>Longitude</span>
+              <input name="lon" type="number" step="0.0001" value="76.8897" />
+            </label>
+          </div>
+
+          <div class="day-picker">
+            <div>
+              <p class="section-kicker">Days</p>
+              <h4>Choose when it runs</h4>
+            </div>
+            <div class="chip-group">
+              <label class="choice-chip"><input type="radio" name="day_mode" value="everyday" checked /><span>Every day</span></label>
+              <label class="choice-chip"><input type="radio" name="day_mode" value="weekdays" /><span>Weekdays</span></label>
+              <label class="choice-chip"><input type="radio" name="day_mode" value="weekends" /><span>Weekends</span></label>
+              <label class="choice-chip"><input type="radio" name="day_mode" value="custom" /><span>Custom</span></label>
+            </div>
+            <div id="custom-days" class="chip-group is-hidden">
+              <label class="choice-chip"><input type="checkbox" name="custom_day" value="mon" /><span>Mon</span></label>
+              <label class="choice-chip"><input type="checkbox" name="custom_day" value="tue" /><span>Tue</span></label>
+              <label class="choice-chip"><input type="checkbox" name="custom_day" value="wed" /><span>Wed</span></label>
+              <label class="choice-chip"><input type="checkbox" name="custom_day" value="thu" /><span>Thu</span></label>
+              <label class="choice-chip"><input type="checkbox" name="custom_day" value="fri" /><span>Fri</span></label>
+              <label class="choice-chip"><input type="checkbox" name="custom_day" value="sat" /><span>Sat</span></label>
+              <label class="choice-chip"><input type="checkbox" name="custom_day" value="sun" /><span>Sun</span></label>
+            </div>
+          </div>
+
+          <label class="toggle-row">
+            <input type="checkbox" name="is_enabled" checked />
+            <span>Enable this schedule right away</span>
+          </label>
+
+          <button class="primary-button" type="submit">Create schedule</button>
+        </form>
+
+        <div id="schedules-list" class="stack-list"></div>
+      </section>
+
+      <section class="view" data-view-panel="links">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Local shortcuts</p>
+            <h2>Action links</h2>
+          </div>
+        </div>
+
+        <form id="link-form" class="card form-card compact-form">
+          <div>
+            <p class="section-kicker" id="link-form-kicker">New shortcut</p>
+            <h3 id="link-form-title">Create a local link</h3>
+          </div>
+          <input name="link_id" type="hidden" />
+          <div class="field-grid">
+            <label class="field">
+              <span>Name</span>
+              <input name="name" placeholder="Desk tap on" required />
+            </label>
+            <label class="field">
+              <span>Target type</span>
+              <select name="target_type" id="link-target-type">
+                <option value="device">Device</option>
+                <option value="group">Group</option>
+                <option value="scene">Scene</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Target</span>
+              <select name="target_id" id="link-target-id"></select>
+            </label>
+            <label class="field">
+              <span>Action</span>
+              <select name="action_type" id="link-action-type"></select>
+            </label>
+          </div>
+          <div class="field-grid">
+            <label class="toggle-row">
+              <input type="checkbox" name="requires_confirmation" />
+              <span>Ask for confirmation before running</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" name="is_enabled" checked />
+              <span>Keep link enabled</span>
+            </label>
+          </div>
+          <div class="inline-actions">
+            <button class="primary-button" type="submit">Save link</button>
+            <button id="link-form-reset" class="ghost-button is-hidden" type="button">Cancel edit</button>
+          </div>
+        </form>
+
+        <div id="links-list" class="stack-list"></div>
       </section>
     </main>
 
-    <template id="device-card-template">
-      <article class="item">
-        <div class="item-main"></div>
-        <div class="item-actions">
-          <button data-action="on" class="button button-small">On</button>
-          <button data-action="off" class="button button-small button-secondary">Off</button>
-        </div>
-        <div class="device-control-grid">
-          <label>
-            <span>Brightness</span>
-            <input data-field="brightness" type="range" min="0" max="100" value="100" />
-          </label>
-          <button data-action="brightness" class="button button-small">Apply Brightness</button>
-          <label>
-            <span>Color</span>
-            <input data-field="color" type="color" value="#ffffff" />
-          </label>
-          <button data-action="color" class="button button-small button-ghost">Apply Color</button>
-        </div>
-      </article>
-    </template>
-
-    <script src="/static/app.js" type="module"></script>
+    <script src="/static/home.js" type="module"></script>
   </body>
 </html>

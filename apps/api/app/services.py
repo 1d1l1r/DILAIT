@@ -11,8 +11,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from apps.api.app.core import DAY_PRESETS, settings
+from apps.api.app.ble.scanner import BleakDiscoveryScanner
 from apps.api.app.ble.adapter import BLEAdapterError
-from apps.api.app.drivers import DriverCandidate, get_driver
+from apps.api.app.drivers import DriverCandidate, _bj_led_driver, _elk_driver, _zengge_driver, get_driver
 from apps.api.app.models import (
     ActionType,
     ActionLink,
@@ -327,24 +328,40 @@ async def delete_scene_action(session, scene_id: int, action_id: int) -> Scene:
 
 async def discover_candidates() -> list[DiscoveryCandidateRead]:
     candidate_index: dict[tuple[str, str], DriverCandidate] = {}
-    for family in [DeviceFamily.MOCK.value, DeviceFamily.ELK_BLEDOM.value, DeviceFamily.ZENGGE.value, DeviceFamily.BJ_LED.value]:
-        for candidate in await get_driver(family).discover_candidates():
-            key = (candidate.source, candidate.ble_identifier)
-            existing = candidate_index.get(key)
-            if existing is None:
-                candidate_index[key] = candidate
-                continue
+    mock_driver = get_driver(DeviceFamily.MOCK.value)
+    for candidate in await mock_driver.discover_candidates():
+        key = (candidate.source, candidate.ble_identifier)
+        candidate_index[key] = candidate
 
-            should_replace = False
-            if candidate.is_supported and not existing.is_supported:
-                should_replace = True
-            elif existing.family == "Unclassified" and candidate.family != "Unclassified":
-                should_replace = True
-            elif existing.classification_reason is None and candidate.classification_reason is not None:
-                should_replace = True
+    scanner = BleakDiscoveryScanner()
+    scan_results = await scanner.scan()
+    real_candidates: list[DriverCandidate] = []
+    for scan_result in scan_results:
+        real_candidates.extend(
+            [
+                _elk_driver._scan_result_to_candidate(scan_result),
+                _zengge_driver._scan_result_to_candidate(scan_result),
+                _bj_led_driver._scan_result_to_candidate(scan_result),
+            ]
+        )
 
-            if should_replace:
-                candidate_index[key] = candidate
+    for candidate in real_candidates:
+        key = (candidate.source, candidate.ble_identifier)
+        existing = candidate_index.get(key)
+        if existing is None:
+            candidate_index[key] = candidate
+            continue
+
+        should_replace = False
+        if candidate.is_supported and not existing.is_supported:
+            should_replace = True
+        elif existing.family == "Unclassified" and candidate.family != "Unclassified":
+            should_replace = True
+        elif existing.classification_reason is None and candidate.classification_reason is not None:
+            should_replace = True
+
+        if should_replace:
+            candidate_index[key] = candidate
 
     candidates = list(candidate_index.values())
     return [

@@ -12,6 +12,8 @@ const els = {
   failures: document.getElementById("failures-list"),
   actionLinks: document.getElementById("action-links-list"),
   deviceFamily: document.getElementById("device-family"),
+  discoverButton: document.getElementById("discover-devices"),
+  discoveryStatus: document.getElementById("discovery-status"),
   groupAttachGroup: document.getElementById("group-attach-group"),
   groupAttachDevice: document.getElementById("group-attach-device"),
   sceneActionScene: document.getElementById("scene-action-scene"),
@@ -519,23 +521,41 @@ async function refreshAll() {
 }
 
 async function refreshDiscovery() {
-  const candidates = await api("/api/devices/discover", { method: "POST" });
-  renderList(
-    els.discovery,
-    candidates,
-    (candidate) =>
-      simpleCard(
-        candidate.name,
-        `${candidate.family} | ${candidate.source} | RSSI ${candidate.rssi ?? "n/a"} | ${candidate.ble_identifier}<br><span class="muted">${candidate.classification_reason || "manual family override available"}${candidate.services?.length ? ` | services: ${candidate.services.join(", ")}` : ""}</span>`,
-        (() => {
-          const button = document.createElement("button");
-          button.className = "button button-small";
-          button.textContent = "Use in onboarding";
-          button.addEventListener("click", () => selectCandidate(candidate));
-          return button;
-        })(),
-      ),
-  );
+  const startedAt = performance.now();
+  els.discoverButton.disabled = true;
+  els.discoverButton.textContent = "Scanning...";
+  els.discoveryStatus.textContent = "Scanning nearby BLE devices. This can take a few seconds on Windows.";
+  els.discovery.innerHTML =
+    '<div class="item"><div class="item-main muted">Scanning in progress. Nearby BLE devices will appear here when the pass completes.</div></div>';
+
+  try {
+    const candidates = await api("/api/devices/discover", { method: "POST" });
+    const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(1);
+    els.discoveryStatus.textContent = `Scan complete in ${elapsedSeconds}s. Found ${candidates.length} candidate(s).`;
+    renderList(
+      els.discovery,
+      candidates,
+      (candidate) =>
+        simpleCard(
+          candidate.name,
+          `${candidate.family} | ${candidate.source} | RSSI ${candidate.rssi ?? "n/a"} | ${candidate.ble_identifier}<br><span class="muted">${candidate.classification_reason || "manual family override available"}${candidate.services?.length ? ` | services: ${candidate.services.join(", ")}` : ""}</span>`,
+          (() => {
+            const button = document.createElement("button");
+            button.className = "button button-small";
+            button.textContent = "Use in onboarding";
+            button.addEventListener("click", () => selectCandidate(candidate));
+            return button;
+          })(),
+        ),
+    );
+  } catch (error) {
+    els.discoveryStatus.textContent = `BLE scan failed: ${error.message}`;
+    els.discovery.innerHTML = `<div class="item"><div class="item-main muted">Scan failed. ${escapeHtml(error.message)}</div></div>`;
+    throw error;
+  } finally {
+    els.discoverButton.disabled = false;
+    els.discoverButton.textContent = "Scan BLE";
+  }
 }
 
 function selectCandidate(candidate) {
@@ -692,7 +712,7 @@ handleForm("rule-form", (data) =>
 );
 
 document.getElementById("refresh-all").addEventListener("click", refreshAll);
-document.getElementById("discover-devices").addEventListener("click", refreshDiscovery);
+els.discoverButton.addEventListener("click", refreshDiscovery);
 document.getElementById("clear-onboarding").addEventListener("click", clearSelectedCandidate);
 els.sceneTargetType.addEventListener("change", () => syncTargetSelect(els.sceneTargetType, els.sceneTargetId));
 els.ruleTargetType.addEventListener("change", () => syncTargetSelect(els.ruleTargetType, els.ruleTargetId));

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lights Hub Advanced</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero card">
+        <div>
+          <p class="eyebrow">Advanced Admin</p>
+          <h1>Lights Hub Console</h1>
+          <p class="muted">
+            Engineering and debug panel for raw onboarding, discovery inspection, manual overrides, scenes, rules,
+            action links, and BLE activity details.
+          </p>
+          <div id="discovery-status" class="tip">BLE scan is idle.</div>
+        </div>
+        <div class="hero-actions">
+          <a href="/" class="button button-secondary">Everyday app</a>
+          <button id="refresh-all" class="button">Refresh</button>
+          <button id="discover-devices" class="button button-secondary">Scan BLE</button>
+        </div>
+      </section>
+
+      <section class="grid stats" id="dashboard-cards"></section>
+
+      <section class="grid two-up">
+        <article class="card">
+          <h2>Quick Add Room</h2>
+          <form id="room-form" class="stack">
+            <input name="name" placeholder="Living room" required />
+            <input name="sort_order" type="number" value="0" />
+            <button class="button" type="submit">Save room</button>
+          </form>
+          <div id="rooms-list" class="list compact"></div>
+        </article>
+
+        <article class="card">
+          <h2>Onboard Device</h2>
+          <form id="device-form" class="stack">
+            <div id="device-candidate-note" class="tip">Manual entry or pick a discovery candidate below.</div>
+            <input name="name" placeholder="TV backlight" required />
+            <input name="ble_identifier" placeholder="BLE identifier" required />
+            <input name="ble_address" placeholder="BLE address (optional)" />
+            <input name="vendor_name" placeholder="Vendor name (optional)" />
+            <select name="family" id="device-family"></select>
+            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
+            <input name="meta_json" type="hidden" value="{}" />
+            <button class="button" type="submit">Save device</button>
+            <button id="clear-onboarding" class="button button-secondary" type="button">Clear candidate</button>
+          </form>
+        </article>
+      </section>
+
+      <section class="grid two-up">
+        <article class="card">
+          <h2>Devices</h2>
+          <div id="devices-list" class="list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Mixed Groups</h2>
+          <form id="group-form" class="stack inline-form">
+            <input name="name" placeholder="Desk + room blend" required />
+            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
+            <button class="button" type="submit">Create group</button>
+          </form>
+          <form id="group-attach-form" class="stack inline-form">
+            <select name="group_id" id="group-attach-group" required></select>
+            <select name="device_id" id="group-attach-device" required></select>
+            <button class="button button-secondary" type="submit">Attach device</button>
+          </form>
+          <div id="groups-list" class="list"></div>
+        </article>
+      </section>
+
+      <section class="grid two-up">
+        <article class="card">
+          <h2>Scenes</h2>
+          <form id="scene-form" class="stack inline-form">
+            <input name="name" placeholder="Movie mode" required />
+            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
+            <button class="button" type="submit">Create scene</button>
+          </form>
+          <form id="scene-action-form" class="stack">
+            <select name="scene_id" id="scene-action-scene" required></select>
+            <select name="target_type" id="scene-target-type">
+              <option value="device">device</option>
+              <option value="group">group</option>
+            </select>
+            <select name="target_id" id="scene-target-id" required></select>
+            <select name="action_type">
+              <option value="on">on</option>
+              <option value="off">off</option>
+              <option value="brightness">brightness</option>
+              <option value="color">color</option>
+            </select>
+            <textarea name="action_payload_json" rows="4">{"value": 40}</textarea>
+            <button class="button button-secondary" type="submit">Add scene action</button>
+          </form>
+          <div id="scenes-list" class="list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Action Links</h2>
+          <form id="action-link-form" class="stack">
+            <input name="name" placeholder="Desk tap on" required />
+            <input name="token" placeholder="Token (optional)" />
+            <select name="target_type" id="action-link-target-type">
+              <option value="device">device</option>
+              <option value="group">group</option>
+              <option value="scene">scene</option>
+            </select>
+            <select name="target_id" id="action-link-target-id" required></select>
+            <select name="action_type" id="action-link-action-type">
+              <option value="on">on</option>
+              <option value="off">off</option>
+              <option value="toggle">toggle</option>
+              <option value="run_scene">run_scene</option>
+            </select>
+            <label class="checkbox-row">
+              <input name="requires_confirmation" type="checkbox" />
+              <span>Ask for confirmation first</span>
+            </label>
+            <label class="checkbox-row">
+              <input name="is_enabled" type="checkbox" checked />
+              <span>Enabled</span>
+            </label>
+            <button class="button" type="submit">Create action link</button>
+          </form>
+          <div id="action-links-list" class="list"></div>
+        </article>
+      </section>
+
+      <section class="grid two-up">
+        <article class="card">
+          <h2>Rules</h2>
+          <form id="rule-form" class="stack">
+            <input name="name" placeholder="Sunset living room" required />
+            <select name="target_type" id="rule-target-type">
+              <option value="device">device</option>
+              <option value="group">group</option>
+              <option value="scene">scene</option>
+            </select>
+            <select name="target_id" id="rule-target-id" required></select>
+            <select name="rule_type">
+              <option value="recurring">recurring</option>
+              <option value="astronomical">astronomical</option>
+              <option value="once">once</option>
+              <option value="delay">delay</option>
+            </select>
+            <input name="timezone" value="Asia/Qyzylorda" required />
+            <input name="days_of_week_mask" type="number" value="127" required />
+            <textarea name="payload_json" rows="7">{"action":"on","time":"19:00:00"}</textarea>
+            <button class="button" type="submit">Create rule</button>
+          </form>
+          <div class="tip">
+            Try astronomical payload:
+            <code>{"action":"on","solar_event":"sunset","offset_minutes":-20,"lat":43.2389,"lon":76.8897}</code>
+          </div>
+          <div id="rules-list" class="list"></div>
+        </article>
+
+        <article class="card">
+          <h2>Discovery + Activity</h2>
+          <div id="discovery-list" class="list"></div>
+          <div id="upcoming-list" class="list compact"></div>
+          <div id="failures-list" class="list compact"></div>
+        </article>
+      </section>
+    </main>
+
+    <template id="device-card-template">
+      <article class="item">
+        <div class="item-main"></div>
+        <div class="item-actions">
+          <button data-action="on" class="button button-small">On</button>
+          <button data-action="off" class="button button-small button-secondary">Off</button>
+        </div>
+        <div class="device-control-grid">
+          <label>
+            <span>Brightness</span>
+            <input data-field="brightness" type="range" min="0" max="100" value="100" />
+          </label>
+          <button data-action="brightness" class="button button-small">Apply Brightness</button>
+          <label>
+            <span>Color</span>
+            <input data-field="color" type="color" value="#ffffff" />
+          </label>
+          <button data-action="color" class="button button-small button-ghost">Apply Color</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>

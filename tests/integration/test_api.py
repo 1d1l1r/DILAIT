@@ -306,3 +306,15 @@ def test_action_links_immediate_and_confirmation_modes():
         assert client.get("/api/devices").json()[0]["known_state_json"]["is_on"] is False
     finally:
         restore_temp_database(db_path, originals)
+
+
+def test_ui_shell_routes_are_split():
+    client = TestClient(app)
+
+    root = client.get("/")
+    advanced = client.get("/advanced")
+
+    assert root.status_code == 200
+    assert advanced.status_code == 200
+    assert "Everyday control" in root.text
+    assert "Advanced Admin" in advanced.text

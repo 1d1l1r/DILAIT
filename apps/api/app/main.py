@@ -201,6 +201,12 @@ async def root() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/advanced")
+@app.get("/advanced/")
+async def advanced() -> FileResponse:
+    return FileResponse(STATIC_DIR / "advanced.html")
+
+
 @app.get("/a/{token}", response_class=HTMLResponse)
 async def action_link_open(
     token: str,

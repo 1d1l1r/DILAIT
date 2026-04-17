@@ -59,9 +59,24 @@ Sprint 5 is now implemented and validated on Windows for practical mixed control
   - one action-link-triggered scene run
   - one scheduler rule targeting the mixed group
 
+## Sprint 6 status
+
+Sprint 6 is now implemented as a frontend information-architecture split:
+
+- `/` is now the default human-first, mobile-first control shell
+- `/advanced` preserves the existing engineering/admin/debug console
+- the new default UI is room-first and avoids raw IDs, payload JSON, and BLE metadata in everyday flows
+- discovery in `/` is split into:
+  - new supported devices
+  - already added devices
+  - other / unsupported BLE devices
+- the advanced console still exposes the raw onboarding/debug workflows and full discovery/debug visibility
+- schedules and action links now have human-friendly forms in `/` while reusing the same existing backend and action engine
+- the backend BLE/device capability surface remains unchanged; this sprint is intentionally UX-only on top of the validated core families
+
 ## Next implementation slices
 
-1. Add safer scene/group editing polish and better inline visibility for partial failures in the UI.
-2. Expand discovery heuristics for additional adjacent variants only when backed by real hardware validation.
-3. Add NFC-ready usage patterns on top of the now-stable local action-link entrypoint without adding cloud dependence.
+1. Add richer inline editing for human-first scenes and schedules without drifting into raw admin UX.
+2. Improve everyday visibility for partial failures from mixed-family actions in the main mobile shell.
+3. Expand discovery heuristics for additional adjacent variants only when backed by real hardware validation.
 4. Improve state feedback where families expose reliable notification or readback paths.
