@@ -140,17 +140,22 @@ class RuleExecutor:
             try:
                 payload = rule.payload_json or {}
                 action_name = payload.get("action", "run_scene" if rule.target_type.value == "scene" else "on")
-                await execute_target_action(
+                result = await execute_target_action(
                     session=session,
                     target_type=rule.target_type,
                     target_id=rule.target_id,
                     action_name=action_name,
                     payload=payload,
                 )
-                run.status = RunStatus.SUCCESS
+                run.status = RunStatus.SUCCESS if result.failure_count == 0 else RunStatus.FAILED
                 run.executed_at = datetime.now(UTC)
-                run.details_json = {**run.details_json, "attempt": attempt + 1, "action": action_name}
-                last_error = None
+                run.details_json = {
+                    **run.details_json,
+                    "attempt": attempt + 1,
+                    "action": action_name,
+                    "execution": result.to_dict(),
+                }
+                last_error = None if result.failure_count == 0 else f"{result.failure_count} sub-action(s) failed"
                 break
             except Exception as exc:  # noqa: BLE001
                 last_error = str(exc)
@@ -192,4 +197,3 @@ class SchedulerEngine:
         while True:
             await self._executor.run_once()
             await asyncio.sleep(self.poll_seconds)
-

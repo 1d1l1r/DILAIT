@@ -134,6 +134,43 @@ class SceneRead(APIModel):
     actions: list[SceneActionRead] = Field(default_factory=list)
 
 
+class ActionLinkCreate(APIModel):
+    name: str
+    token: str | None = None
+    target_type: TargetType
+    target_id: int
+    action_type: ActionType
+    action_payload_json: dict[str, Any] = Field(default_factory=dict)
+    is_enabled: bool = True
+    requires_confirmation: bool = False
+
+
+class ActionLinkUpdate(APIModel):
+    name: str | None = None
+    token: str | None = None
+    target_type: TargetType | None = None
+    target_id: int | None = None
+    action_type: ActionType | None = None
+    action_payload_json: dict[str, Any] | None = None
+    is_enabled: bool | None = None
+    requires_confirmation: bool | None = None
+
+
+class ActionLinkRead(APIModel):
+    id: int
+    name: str
+    token: str
+    target_type: TargetType
+    target_id: int
+    action_type: ActionType
+    action_payload_json: dict[str, Any]
+    is_enabled: bool
+    requires_confirmation: bool
+    created_at: datetime
+    updated_at: datetime | None
+    last_used_at: datetime | None
+
+
 class RuleCreate(APIModel):
     name: str
     target_type: TargetType

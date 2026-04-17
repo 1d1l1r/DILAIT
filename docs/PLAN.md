@@ -42,9 +42,26 @@ Sprint 4 is now implemented and validated on Windows for the third production BL
 - recurring and astronomical rules both executed successfully on the real BJ-family device
 - all three core families now have one verified end-to-end production path in the current architecture
 
+## Sprint 5 status
+
+Sprint 5 is now implemented and validated on Windows for practical mixed control on top of the three working BLE families:
+
+- groups now support mixed membership across ELK-BLEDOM, ZENGGE / Surplife, BJ_LED / MohuanLED, and mock devices
+- scene actions now target devices and groups through the same shared action engine used by direct control and scheduler runs
+- group and scene execution now aggregate per-device failures so one failing device does not block the rest of the mixed action flow
+- tokenized local action links are implemented through `GET /a/{token}` with immediate and confirmation-first modes
+- mobile-friendly confirmation, success, partial-success, and failure pages now exist for action-link usage from iPhone or future NFC tags
+- integration tests now run against an isolated temporary SQLite database instead of the live local hub database
+- live mixed validation succeeded with a real BJ device and a real ZENGGE-family device through:
+  - direct single-device actions
+  - one mixed-family group action
+  - one mixed-family scene
+  - one action-link-triggered scene run
+  - one scheduler rule targeting the mixed group
+
 ## Next implementation slices
 
-1. Polish mixed-family group and scene flows now that ELK-BLEDOM, ZENGGE, and BJ_LED each have a validated production path.
+1. Add safer scene/group editing polish and better inline visibility for partial failures in the UI.
 2. Expand discovery heuristics for additional adjacent variants only when backed by real hardware validation.
-3. Expand action-links and NFC entrypoints on top of the shared action execution layer.
+3. Add NFC-ready usage patterns on top of the now-stable local action-link entrypoint without adding cloud dependence.
 4. Improve state feedback where families expose reliable notification or readback paths.

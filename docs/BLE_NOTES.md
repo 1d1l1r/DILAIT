@@ -32,6 +32,20 @@
   - characteristic `0000ee02-0000-1000-8000-00805f9b34fb` write/write-without-response/read, observed handle `7`
 - Readback from both `ee01` and `ee02` returned the same fixed 20-byte test pattern and did not reflect live light state changes.
 
+## Sprint 5 mixed execution findings
+
+- Mixed-family validation was performed on Windows on 2026-04-18 with:
+  - `BJ_LED` at `23:01:01:6C:15:81`
+  - `LEDnetWF02003338FA1F` at `E4:98:BB:38:FA:1F`
+- Direct single-device actions for both participating devices still executed successfully after the mixed-family/action-link changes.
+- A mixed-family group containing those two devices executed a real `color` action successfully.
+- A mixed-family scene targeting:
+  - the mixed group with `color`
+  - the BJ device with `off`
+  executed successfully through the shared scene engine.
+- A local action link targeting that scene via `GET /a/{token}` executed successfully and returned the human-readable success page.
+- A delay rule targeting the mixed group executed successfully after the Sprint 5 changes, which confirmed scheduler compatibility with the new mixed-action execution path.
+
 ## ZENGGE / Surplife validated GATT shape
 
 - Services observed on the validated device:
@@ -169,3 +183,5 @@
 - BJ/Mohuan currently uses optimistic state only. The validated hardware did not provide authoritative notification/readback, and direct reads from `ee01`/`ee02` returned a static test-pattern buffer rather than live state.
 - Sprint 4 intentionally supports one verified BJ/Mohuan profile first: advertised `BJ_LED` with `eea0 / ee01 / ee02`.
 - One onboarding edge case was fixed during Sprint 4: if the user assigned a custom device name before creation, probe had to prefer the live advertised name from the scan result over the custom name so profile selection would still lock onto the validated BJ family.
+- Sprint 5 did not reveal any new family-specific packet quirks. Mixed execution still reuses the exact validated per-family commands from the underlying device drivers.
+- In mixed-family runs, optimistic-state families still remain optimistic. Group, scene, and rule summaries reflect execution success/failure per target, but they do not upgrade BJ/ZENGGE/ELK to authoritative readback.

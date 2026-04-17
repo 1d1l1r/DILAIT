@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import secrets
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -12,6 +15,7 @@ from apps.api.app.ble.adapter import BLEAdapterError
 from apps.api.app.drivers import DriverCandidate, get_driver
 from apps.api.app.models import (
     ActionType,
+    ActionLink,
     Device,
     DeviceFamily,
     Group,
@@ -23,6 +27,8 @@ from apps.api.app.models import (
     TargetType,
 )
 from apps.api.app.schemas import (
+    ActionLinkCreate,
+    ActionLinkUpdate,
     DeviceCreate,
     DeviceUpdate,
     DiscoveryCandidateRead,
@@ -37,6 +43,8 @@ from apps.api.app.schemas import (
     SceneUpdate,
 )
 
+LOGGER = logging.getLogger(__name__)
+
 
 def _state_merge(current: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     merged = {**(current or {})}
@@ -44,8 +52,39 @@ def _state_merge(current: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
     return merged
 
 
+@dataclass(slots=True)
+class ActionExecutionResult:
+    target_type: str
+    target_id: int
+    action_name: str
+    success_count: int = 0
+    failure_count: int = 0
+    failures: list[dict[str, Any]] = field(default_factory=list)
+    children: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def status(self) -> str:
+        if self.failure_count == 0:
+            return "success"
+        if self.success_count == 0:
+            return "failed"
+        return "partial"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "action_name": self.action_name,
+            "status": self.status,
+            "success_count": self.success_count,
+            "failure_count": self.failure_count,
+            "failures": self.failures,
+            "children": self.children,
+        }
+
+
 async def _get_or_404(session, model, item_id: int, options: list[Any] | None = None):
-    statement = select(model).where(model.id == item_id)
+    statement = select(model).where(model.id == item_id).execution_options(populate_existing=True)
     for option in options or []:
         statement = statement.options(option)
     result = await session.execute(statement)
@@ -134,9 +173,8 @@ async def delete_device(session, device_id: int) -> None:
     await session.commit()
 
 
-async def apply_device_action(session, device_id: int, action_name: str, payload: dict[str, Any] | None = None) -> Device:
+async def _apply_device_action_in_place(device: Device, action_name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = payload or {}
-    device = await _get_or_404(session, Device, device_id)
     driver = get_driver(device.family.value if isinstance(device.family, DeviceFamily) else str(device.family))
     desired_patch: dict[str, Any] = {}
 
@@ -166,10 +204,20 @@ async def apply_device_action(session, device_id: int, action_name: str, payload
             raise HTTPException(status_code=400, detail=f"Unsupported device action: {action_name}")
     except BLEAdapterError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     device.desired_state_json = _state_merge(device.desired_state_json, desired_patch)
     device.known_state_json = _state_merge(device.known_state_json, desired_patch)
     device.last_seen_at = datetime.now(UTC)
+    return desired_patch
+
+
+async def apply_device_action(session, device_id: int, action_name: str, payload: dict[str, Any] | None = None) -> Device:
+    device = await _get_or_404(session, Device, device_id)
+    await _apply_device_action_in_place(device, action_name, payload)
     await session.commit()
     await session.refresh(device)
     return device
@@ -244,6 +292,15 @@ async def delete_scene(session, scene_id: int) -> None:
 
 
 async def add_scene_action(session, scene_id: int, payload: SceneActionCreate) -> Scene:
+    if payload.target_type == TargetType.SCENE:
+        raise HTTPException(status_code=400, detail="Scene actions may target only devices or groups")
+    if payload.action_type not in {
+        ActionType.ON,
+        ActionType.OFF,
+        ActionType.BRIGHTNESS,
+        ActionType.COLOR,
+    }:
+        raise HTTPException(status_code=400, detail=f"Unsupported scene action: {payload.action_type.value}")
     scene = await _get_or_404(session, Scene, scene_id, options=[selectinload(Scene.actions)])
     action = SceneAction(
         scene_id=scene.id,
@@ -254,6 +311,16 @@ async def add_scene_action(session, scene_id: int, payload: SceneActionCreate) -
         sort_order=payload.sort_order,
     )
     session.add(action)
+    await session.commit()
+    return await _get_or_404(session, Scene, scene_id, options=[selectinload(Scene.actions)])
+
+
+async def delete_scene_action(session, scene_id: int, action_id: int) -> Scene:
+    scene = await _get_or_404(session, Scene, scene_id, options=[selectinload(Scene.actions)])
+    action = next((item for item in scene.actions if item.id == action_id), None)
+    if action is None:
+        raise HTTPException(status_code=404, detail=f"SceneAction {action_id} not found")
+    await session.delete(action)
     await session.commit()
     return await _get_or_404(session, Scene, scene_id, options=[selectinload(Scene.actions)])
 
@@ -299,23 +366,168 @@ async def discover_candidates() -> list[DiscoveryCandidateRead]:
     ]
 
 
+async def list_action_links(session) -> list[ActionLink]:
+    result = await session.execute(select(ActionLink).order_by(ActionLink.updated_at.desc(), ActionLink.id.desc()))
+    return result.scalars().all()
+
+
+async def _token_exists(session, token: str, exclude_id: int | None = None) -> bool:
+    statement = select(ActionLink).where(ActionLink.token == token)
+    if exclude_id is not None:
+        statement = statement.where(ActionLink.id != exclude_id)
+    result = await session.execute(statement)
+    return result.scalar_one_or_none() is not None
+
+
+async def _ensure_action_link_token(session, requested: str | None = None, exclude_id: int | None = None) -> str:
+    if requested:
+        token = requested.strip()
+        if not token:
+            raise HTTPException(status_code=400, detail="Action link token cannot be blank")
+        if await _token_exists(session, token, exclude_id=exclude_id):
+            raise HTTPException(status_code=409, detail=f"Action link token '{token}' already exists")
+        return token
+
+    for _ in range(10):
+        token = secrets.token_urlsafe(8).replace("-", "").replace("_", "")[:12]
+        if token and not await _token_exists(session, token, exclude_id=exclude_id):
+            return token
+    raise HTTPException(status_code=500, detail="Unable to generate a unique action link token")
+
+
+def _validate_action_link_target(target_type: TargetType, action_type: ActionType) -> None:
+    if target_type == TargetType.SCENE and action_type != ActionType.RUN_SCENE:
+        raise HTTPException(status_code=400, detail="Scene action links must use action_type 'run_scene'")
+    if target_type != TargetType.SCENE and action_type == ActionType.RUN_SCENE:
+        raise HTTPException(status_code=400, detail="'run_scene' action links must target a scene")
+    if target_type != TargetType.SCENE and action_type not in {ActionType.ON, ActionType.OFF, ActionType.TOGGLE}:
+        raise HTTPException(
+            status_code=400,
+            detail="Device and group action links support only on, off, or toggle",
+        )
+
+
+async def create_action_link(session, payload: ActionLinkCreate) -> ActionLink:
+    _validate_action_link_target(payload.target_type, payload.action_type)
+    token = await _ensure_action_link_token(session, payload.token)
+    link = ActionLink(
+        name=payload.name,
+        token=token,
+        target_type=payload.target_type,
+        target_id=payload.target_id,
+        action_type=payload.action_type,
+        action_payload_json=payload.action_payload_json,
+        is_enabled=payload.is_enabled,
+        requires_confirmation=payload.requires_confirmation,
+    )
+    session.add(link)
+    await session.commit()
+    await session.refresh(link)
+    return link
+
+
+async def update_action_link(session, action_link_id: int, payload: ActionLinkUpdate) -> ActionLink:
+    link = await _get_or_404(session, ActionLink, action_link_id)
+    updates = payload.model_dump(exclude_unset=True)
+    next_target_type = updates.get("target_type", link.target_type)
+    next_action_type = updates.get("action_type", link.action_type)
+    _validate_action_link_target(next_target_type, next_action_type)
+
+    if "token" in updates:
+        link.token = await _ensure_action_link_token(session, updates["token"], exclude_id=link.id)
+        updates.pop("token")
+
+    for field, value in updates.items():
+        setattr(link, field, value)
+    await session.commit()
+    await session.refresh(link)
+    return link
+
+
+async def delete_action_link(session, action_link_id: int) -> None:
+    link = await _get_or_404(session, ActionLink, action_link_id)
+    await session.delete(link)
+    await session.commit()
+
+
+async def get_action_link_by_token(session, token: str) -> ActionLink:
+    result = await session.execute(select(ActionLink).where(ActionLink.token == token))
+    link = result.scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=404, detail=f"Action link '{token}' not found")
+    return link
+
+
 async def execute_target_action(session, target_type: TargetType, target_id: int, action_name: str, payload: dict[str, Any] | None = None) -> Any:
     payload = payload or {}
 
     if target_type == TargetType.DEVICE:
-        return await apply_device_action(session, target_id, action_name, payload)
+        try:
+            device = await _get_or_404(session, Device, target_id)
+            await _apply_device_action_in_place(device, action_name, payload)
+            await session.flush()
+            return ActionExecutionResult(
+                target_type=TargetType.DEVICE.value,
+                target_id=target_id,
+                action_name=action_name,
+                success_count=1,
+                children=[{"target_type": "device", "target_id": target_id, "name": device.name, "status": "success"}],
+            )
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+            LOGGER.warning("Device action failed: target=%s action=%s error=%s", target_id, action_name, detail)
+            return ActionExecutionResult(
+                target_type=TargetType.DEVICE.value,
+                target_id=target_id,
+                action_name=action_name,
+                failure_count=1,
+                failures=[{"target_type": "device", "target_id": target_id, "error": detail}],
+            )
 
     if target_type == TargetType.GROUP:
         group = await _get_or_404(session, Group, target_id, options=[selectinload(Group.devices)])
+        result = ActionExecutionResult(target_type=TargetType.GROUP.value, target_id=target_id, action_name=action_name)
         for device in group.devices:
-            await apply_device_action(session, device.id, action_name, payload)
-        return group
+            child_result = await execute_target_action(session, TargetType.DEVICE, device.id, action_name, payload)
+            result.success_count += child_result.success_count
+            result.failure_count += child_result.failure_count
+            result.failures.extend(child_result.failures)
+            result.children.append(
+                {
+                    "target_type": "device",
+                    "target_id": device.id,
+                    "name": device.name,
+                    "family": device.family.value if isinstance(device.family, DeviceFamily) else str(device.family),
+                    "status": child_result.status,
+                }
+            )
+        return result
 
     if target_type == TargetType.SCENE:
         scene = await _get_or_404(session, Scene, target_id, options=[selectinload(Scene.actions)])
+        result = ActionExecutionResult(target_type=TargetType.SCENE.value, target_id=target_id, action_name=action_name)
         for action in scene.actions:
-            await execute_target_action(session, action.target_type, action.target_id, action.action_type.value, action.action_payload_json)
-        return scene
+            child_result = await execute_target_action(
+                session,
+                action.target_type,
+                action.target_id,
+                action.action_type.value,
+                action.action_payload_json,
+            )
+            result.success_count += child_result.success_count
+            result.failure_count += child_result.failure_count
+            result.failures.extend(child_result.failures)
+            result.children.append(
+                {
+                    "scene_action_id": action.id,
+                    "sort_order": action.sort_order,
+                    "target_type": action.target_type.value,
+                    "target_id": action.target_id,
+                    "action_type": action.action_type.value,
+                    "status": child_result.status,
+                }
+            )
+        return result
 
     raise HTTPException(status_code=400, detail=f"Unsupported target type: {target_type}")
 

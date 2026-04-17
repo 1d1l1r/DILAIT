@@ -13,12 +13,12 @@
           <p class="eyebrow">Local-first BLE control</p>
           <h1>Lights Hub</h1>
           <p class="muted">
-            Sprint 1 foundation for mock devices, groups, scenes, recurring rules, and astronomical timers.
+            Mixed-family groups, reusable scenes, recurring rules, and NFC-ready action links for the local hub.
           </p>
         </div>
         <div class="hero-actions">
           <button id="refresh-all" class="button">Refresh</button>
-          <button id="discover-devices" class="button button-secondary">Scan mock BLE</button>
+          <button id="discover-devices" class="button button-secondary">Scan BLE</button>
         </div>
       </section>
 
@@ -40,7 +40,7 @@
           <form id="device-form" class="stack">
             <div id="device-candidate-note" class="tip">Manual entry or pick a discovery candidate below.</div>
             <input name="name" placeholder="TV backlight" required />
-            <input name="ble_identifier" placeholder="mock://tv-backlight" required />
+            <input name="ble_identifier" placeholder="BLE identifier" required />
             <input name="ble_address" placeholder="BLE address (optional)" />
             <input name="vendor_name" placeholder="Vendor name (optional)" />
             <select name="family" id="device-family"></select>
@@ -59,15 +59,15 @@
         </article>
 
         <article class="card">
-          <h2>Groups</h2>
+          <h2>Mixed Groups</h2>
           <form id="group-form" class="stack inline-form">
-            <input name="name" placeholder="All bedroom lights" required />
-            <input name="room_id" type="number" min="1" placeholder="Room ID" />
+            <input name="name" placeholder="Desk + room blend" required />
+            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
             <button class="button" type="submit">Create group</button>
           </form>
           <form id="group-attach-form" class="stack inline-form">
-            <input name="group_id" type="number" min="1" placeholder="Group ID" required />
-            <input name="device_id" type="number" min="1" placeholder="Device ID" required />
+            <select name="group_id" id="group-attach-group" required></select>
+            <select name="device_id" id="group-attach-device" required></select>
             <button class="button button-secondary" type="submit">Attach device</button>
           </form>
           <div id="groups-list" class="list"></div>
@@ -79,16 +79,16 @@
           <h2>Scenes</h2>
           <form id="scene-form" class="stack inline-form">
             <input name="name" placeholder="Movie mode" required />
-            <input name="room_id" type="number" min="1" placeholder="Room ID" />
+            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
             <button class="button" type="submit">Create scene</button>
           </form>
           <form id="scene-action-form" class="stack">
-            <input name="scene_id" type="number" min="1" placeholder="Scene ID" required />
-            <select name="target_type">
+            <select name="scene_id" id="scene-action-scene" required></select>
+            <select name="target_type" id="scene-target-type">
               <option value="device">device</option>
               <option value="group">group</option>
             </select>
-            <input name="target_id" type="number" min="1" placeholder="Target ID" required />
+            <select name="target_id" id="scene-target-id" required></select>
             <select name="action_type">
               <option value="on">on</option>
               <option value="off">off</option>
@@ -102,15 +102,47 @@
         </article>
 
         <article class="card">
-          <h2>Rules</h2>
-          <form id="rule-form" class="stack">
-            <input name="name" placeholder="Sunset living room" required />
-            <select name="target_type">
+          <h2>Action Links</h2>
+          <form id="action-link-form" class="stack">
+            <input name="name" placeholder="Desk tap on" required />
+            <input name="token" placeholder="Token (optional)" />
+            <select name="target_type" id="action-link-target-type">
               <option value="device">device</option>
               <option value="group">group</option>
               <option value="scene">scene</option>
             </select>
-            <input name="target_id" type="number" min="1" placeholder="Target ID" required />
+            <select name="target_id" id="action-link-target-id" required></select>
+            <select name="action_type" id="action-link-action-type">
+              <option value="on">on</option>
+              <option value="off">off</option>
+              <option value="toggle">toggle</option>
+              <option value="run_scene">run_scene</option>
+            </select>
+            <label class="checkbox-row">
+              <input name="requires_confirmation" type="checkbox" />
+              <span>Ask for confirmation first</span>
+            </label>
+            <label class="checkbox-row">
+              <input name="is_enabled" type="checkbox" checked />
+              <span>Enabled</span>
+            </label>
+            <button class="button" type="submit">Create action link</button>
+          </form>
+          <div id="action-links-list" class="list"></div>
+        </article>
+      </section>
+
+      <section class="grid two-up">
+        <article class="card">
+          <h2>Rules</h2>
+          <form id="rule-form" class="stack">
+            <input name="name" placeholder="Sunset living room" required />
+            <select name="target_type" id="rule-target-type">
+              <option value="device">device</option>
+              <option value="group">group</option>
+              <option value="scene">scene</option>
+            </select>
+            <select name="target_id" id="rule-target-id" required></select>
             <select name="rule_type">
               <option value="recurring">recurring</option>
               <option value="astronomical">astronomical</option>
@@ -128,16 +160,10 @@
           </div>
           <div id="rules-list" class="list"></div>
         </article>
-      </section>
 
-      <section class="grid two-up">
         <article class="card">
-          <h2>Discovery Candidates</h2>
+          <h2>Discovery + Activity</h2>
           <div id="discovery-list" class="list"></div>
-        </article>
-
-        <article class="card">
-          <h2>Upcoming + Failures</h2>
           <div id="upcoming-list" class="list compact"></div>
           <div id="failures-list" class="list compact"></div>
         </article>
