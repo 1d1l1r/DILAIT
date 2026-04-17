@@ -259,15 +259,27 @@ async def add_scene_action(session, scene_id: int, payload: SceneActionCreate) -
 
 
 async def discover_candidates() -> list[DiscoveryCandidateRead]:
-    candidates: list[DriverCandidate] = []
-    seen: set[tuple[str, str]] = set()
-    for family in [DeviceFamily.MOCK.value, DeviceFamily.ELK_BLEDOM.value]:
+    candidate_index: dict[tuple[str, str], DriverCandidate] = {}
+    for family in [DeviceFamily.MOCK.value, DeviceFamily.ELK_BLEDOM.value, DeviceFamily.ZENGGE.value]:
         for candidate in await get_driver(family).discover_candidates():
             key = (candidate.source, candidate.ble_identifier)
-            if key in seen:
+            existing = candidate_index.get(key)
+            if existing is None:
+                candidate_index[key] = candidate
                 continue
-            seen.add(key)
-            candidates.append(candidate)
+
+            should_replace = False
+            if candidate.is_supported and not existing.is_supported:
+                should_replace = True
+            elif existing.family == "Unclassified" and candidate.family != "Unclassified":
+                should_replace = True
+            elif existing.classification_reason is None and candidate.classification_reason is not None:
+                should_replace = True
+
+            if should_replace:
+                candidate_index[key] = candidate
+
+    candidates = list(candidate_index.values())
     return [
         DiscoveryCandidateRead(
             family=item.family,

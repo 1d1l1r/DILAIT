@@ -12,6 +12,8 @@ LOGGER = logging.getLogger(__name__)
 
 ELK_BLEDOM_WRITE_UUID = "0000fff3-0000-1000-8000-00805f9b34fb"
 ELK_BLEDOM_READ_UUID = "0000fff4-0000-1000-8000-00805f9b34fb"
+ZENGGE_WRITE_UUID = "0000ff01-0000-1000-8000-00805f9b34fb"
+ZENGGE_NOTIFY_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
 
 
 @dataclass(slots=True)
@@ -49,6 +51,17 @@ class ELKBledomProfile:
     turn_off_template: tuple[int, ...]
     brightness_template: tuple[int | str, ...]
     color_template: tuple[int | str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ZenggeProfile:
+    key: str
+    family: str
+    product_ids: tuple[int, ...]
+    ble_versions: tuple[int, ...]
+    name_prefixes: tuple[str, ...]
+    preferred_write_uuids: tuple[str, ...]
+    preferred_read_uuids: tuple[str, ...]
 
 
 ELK_BLEDOM_CAPABILITIES = {
@@ -100,6 +113,29 @@ ELK_BLEDOM_PROFILES = (
 )
 
 ELK_PROFILE_INDEX = {profile.key: profile for profile in ELK_BLEDOM_PROFILES}
+
+ZENGGE_CAPABILITIES = {
+    "power": True,
+    "brightness": True,
+    "rgb": True,
+    "white_channel": False,
+    "effects": False,
+    "readback_state": False,
+}
+
+ZENGGE_PROFILES = (
+    ZenggeProfile(
+        key="zengge_lednetwf_0x33_v5",
+        family=DeviceFamily.ZENGGE.value,
+        product_ids=(0x33,),
+        ble_versions=(5,),
+        name_prefixes=("lednetwf020033", "lednetwf", "surplife"),
+        preferred_write_uuids=(ZENGGE_WRITE_UUID,),
+        preferred_read_uuids=(ZENGGE_NOTIFY_UUID,),
+    ),
+)
+
+ZENGGE_PROFILE_INDEX = {profile.key: profile for profile in ZENGGE_PROFILES}
 
 
 class LightDriver(Protocol):
@@ -318,15 +354,203 @@ class ELKBledomDriver:
         }
 
 
+class ZenggeDriver:
+    family = DeviceFamily.ZENGGE.value
+
+    def __init__(self) -> None:
+        self._scanner = BleakDiscoveryScanner()
+        self._adapter = BleakBLEAdapter()
+        self._sequence = 0
+
+    async def discover_candidates(self) -> list[DriverCandidate]:
+        results = await self._scanner.scan()
+        return [self._scan_result_to_candidate(item) for item in results]
+
+    async def probe(self, ble_identifier: str, name: str | None = None) -> ProbeResult:
+        scan_result = await self._find_scan_result(ble_identifier)
+        scan_metadata = scan_result.metadata if scan_result else {}
+        resolved_name = name or (scan_result.name if scan_result else None)
+        profile = self._pick_profile(name=resolved_name, metadata=scan_metadata)
+        if profile is None:
+            raise RuntimeError(
+                "No verified ZENGGE profile found for this device yet. "
+                "Sprint 3 currently supports the validated LEDnetWF 0x33 controller path."
+            )
+
+        resolved = await self._adapter.inspect_characteristics(
+            identifier=ble_identifier,
+            preferred_write_uuids=profile.preferred_write_uuids,
+            preferred_read_uuids=profile.preferred_read_uuids,
+        )
+        return ProbeResult(
+            family=profile.family,
+            capabilities=ZENGGE_CAPABILITIES.copy(),
+            metadata=self._resolved_metadata(profile, resolved, scan_metadata),
+        )
+
+    async def turn_on(self, device: Device) -> None:
+        await self._write_for_device(device, self._build_power_command(True))
+
+    async def turn_off(self, device: Device) -> None:
+        await self._write_for_device(device, self._build_power_command(False))
+
+    async def set_brightness(self, device: Device, value: int) -> None:
+        brightness = max(0, min(int(value), 100))
+        await self._write_for_device(device, self._build_brightness_command(brightness))
+
+    async def set_rgb(self, device: Device, r: int, g: int, b: int) -> None:
+        await self._write_for_device(
+            device,
+            self._build_color_command(
+                r=max(0, min(int(r), 255)),
+                g=max(0, min(int(g), 255)),
+                b=max(0, min(int(b), 255)),
+            ),
+        )
+
+    async def get_capabilities(self, device: Device | None = None) -> dict[str, bool]:
+        return ZENGGE_CAPABILITIES.copy()
+
+    def _scan_result_to_candidate(self, result: BLEScanResult) -> DriverCandidate:
+        detected_family = result.detected_family or "Unclassified"
+        is_verified_profile = self._pick_profile(name=result.name, metadata=result.metadata) is not None
+        supported = detected_family in {DeviceFamily.ZENGGE.value, DeviceFamily.SURPLIFE.value} and is_verified_profile
+        return DriverCandidate(
+            family=detected_family,
+            name=result.name,
+            ble_identifier=result.ble_identifier,
+            address=result.address,
+            vendor_name=result.metadata.get("vendor_name"),
+            rssi=result.rssi,
+            source=result.source,
+            is_supported=supported,
+            classification_reason=result.classification_reason,
+            advertised_services=result.advertised_services,
+            manufacturer_data=result.manufacturer_data,
+            metadata=result.metadata,
+        )
+
+    async def _find_scan_result(self, ble_identifier: str) -> BLEScanResult | None:
+        for result in await self._scanner.scan(timeout=4):
+            if result.ble_identifier == ble_identifier or result.address == ble_identifier:
+                return result
+        return None
+
+    async def _write_for_device(self, device: Device, payload: bytes) -> None:
+        profile = self._profile_from_device(device)
+        if profile is None:
+            raise BLEAdapterError(
+                "No verified ZENGGE profile is attached to this device. "
+                "Re-onboard it from discovery so we can capture metadata."
+            )
+
+        try:
+            resolved = await self._adapter.write_command(
+                identifier=device.ble_identifier,
+                payload=payload,
+                preferred_write_uuids=profile.preferred_write_uuids,
+                preferred_read_uuids=profile.preferred_read_uuids,
+            )
+        except BLEAdapterError as exc:
+            LOGGER.error("ZENGGE command failed for %s: %s", device.name, exc, exc_info=True)
+            raise
+
+        existing_ble = (device.meta_json or {}).get("ble") or {}
+        device.meta_json = {
+            **(device.meta_json or {}),
+            "ble": self._resolved_metadata(profile, resolved, existing_ble),
+        }
+
+    def _profile_from_device(self, device: Device) -> ZenggeProfile | None:
+        ble_meta = (device.meta_json or {}).get("ble") or {}
+        profile_key = ble_meta.get("driver_profile")
+        if profile_key and profile_key in ZENGGE_PROFILE_INDEX:
+            return ZENGGE_PROFILE_INDEX[profile_key]
+        return self._pick_profile(name=device.name, metadata=ble_meta)
+
+    def _pick_profile(self, name: str | None, metadata: dict[str, Any] | None) -> ZenggeProfile | None:
+        normalized_name = (name or "").strip().lower()
+        metadata = metadata or {}
+        product_id = metadata.get("product_id")
+        ble_version = metadata.get("ble_version")
+
+        for profile in ZENGGE_PROFILES:
+            if product_id in profile.product_ids and (ble_version in profile.ble_versions or ble_version is None):
+                return profile
+            if any(normalized_name.startswith(prefix) for prefix in profile.name_prefixes):
+                if product_id in profile.product_ids or ble_version in profile.ble_versions:
+                    return profile
+
+        return None
+
+    def _next_sequence(self) -> int:
+        self._sequence = (self._sequence + 1) % 256
+        return self._sequence
+
+    def _build_power_command(self, turn_on: bool) -> bytes:
+        mode = 0x23 if turn_on else 0x24
+        raw_payload = bytearray([0x3B, mode, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0x00, 0x00])
+        raw_payload.append(sum(raw_payload) & 0xFF)
+        return self._wrap_command(raw_payload, seq=self._next_sequence())
+
+    def _build_brightness_command(self, brightness_pct: int) -> bytes:
+        raw_payload = bytearray([0x3B, 0x01, 0x00, 0x00, brightness_pct & 0xFF, 0x00, brightness_pct & 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00])
+        raw_payload.append(sum(raw_payload) & 0xFF)
+        return self._wrap_command(raw_payload, seq=self._next_sequence())
+
+    def _build_color_command(self, r: int, g: int, b: int) -> bytes:
+        raw_payload = bytearray([0x31, r & 0xFF, g & 0xFF, b & 0xFF, 0x00, 0x00, 0xF0, 0x0F])
+        raw_payload.append(sum(raw_payload) & 0xFF)
+        return self._wrap_command(raw_payload, seq=self._next_sequence())
+
+    def _wrap_command(self, raw_payload: bytearray, seq: int, cmd_family: int = 0x0B) -> bytes:
+        payload_len = len(raw_payload)
+        packet = bytearray(8 + payload_len)
+        packet[0] = 0x00
+        packet[1] = seq & 0xFF
+        packet[2] = 0x80
+        packet[3] = 0x00
+        packet[4] = (payload_len >> 8) & 0xFF
+        packet[5] = payload_len & 0xFF
+        packet[6] = (payload_len + 1) & 0xFF
+        packet[7] = cmd_family
+        packet[8:] = raw_payload
+        return bytes(packet)
+
+    def _resolved_metadata(
+        self,
+        profile: ZenggeProfile,
+        resolved: ResolvedBLECharacteristics,
+        metadata: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        metadata = metadata or {}
+        return {
+            "driver_profile": profile.key,
+            "protocol_hint": metadata.get("protocol_hint", "lednetwf"),
+            "product_id": metadata.get("product_id"),
+            "ble_version": metadata.get("ble_version"),
+            "firmware_version": metadata.get("firmware_version"),
+            "manufacturer_id": metadata.get("manufacturer_id"),
+            "manufacturer_mac": metadata.get("manufacturer_mac"),
+            "manufacturer_payload_hex": metadata.get("manufacturer_payload_hex"),
+            "write_uuid": resolved.write_uuid,
+            "read_uuid": resolved.read_uuid,
+            "write_handle": resolved.write_handle,
+            "service_uuids": resolved.service_uuids,
+            "characteristic_uuids": resolved.characteristic_uuids,
+        }
+
+
 SUPPORTED_FAMILIES = [family.value for family in DeviceFamily]
 _mock_driver = MockLightDriver()
 _elk_driver = ELKBledomDriver()
+_zengge_driver = ZenggeDriver()
 DRIVER_REGISTRY: dict[str, LightDriver] = {
     DeviceFamily.MOCK.value: _mock_driver,
     DeviceFamily.ELK_BLEDOM.value: _elk_driver,
     DeviceFamily.DUOCO_STRIP.value: _elk_driver,
-    DeviceFamily.ZENGGE.value: _mock_driver,
-    DeviceFamily.SURPLIFE.value: _mock_driver,
+    DeviceFamily.ZENGGE.value: _zengge_driver,
+    DeviceFamily.SURPLIFE.value: _zengge_driver,
     DeviceFamily.MOHUANLED.value: _mock_driver,
     DeviceFamily.BJ_LED.value: _mock_driver,
 }

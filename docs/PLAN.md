@@ -21,9 +21,19 @@ Sprint 2 foundation is now implemented and validated on Windows for the first pr
 - onboarding from discovery into saved devices
 - live command execution through API and scheduler on a real ELK-BLEDOM device
 
+## Sprint 3 status
+
+Sprint 3 is now implemented and validated on Windows for the second production BLE family:
+
+- ZENGGE / Surplife discovery classification for LEDnetWF-style devices
+- first production ZENGGE-family driver for the validated LEDnetWF `product_id 0x33` controller path
+- onboarding from discovery into saved devices without breaking the existing ELK-BLEDOM path
+- live command execution through API and scheduler on a real `LEDnetWF02003348BC6C` device
+- recurring and astronomical rules both executed successfully on the real ZENGGE-family device
+
 ## Next implementation slices
 
-1. Replace mock driver registry entries with real BLE family drivers one by one.
-2. Add richer discovery heuristics and manual family confirmation UI.
+1. Add the next real family driver without regressing the now-validated ELK-BLEDOM and ZENGGE paths.
+2. Expand discovery heuristics for additional LEDnetWF / IOTBT variants while keeping manual family override.
 3. Expand action-links and NFC entrypoints on top of the shared action execution layer.
 4. Polish mixed-family group and scene flows.
