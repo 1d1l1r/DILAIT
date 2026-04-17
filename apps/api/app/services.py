@@ -260,7 +260,7 @@ async def add_scene_action(session, scene_id: int, payload: SceneActionCreate) -
 
 async def discover_candidates() -> list[DiscoveryCandidateRead]:
     candidate_index: dict[tuple[str, str], DriverCandidate] = {}
-    for family in [DeviceFamily.MOCK.value, DeviceFamily.ELK_BLEDOM.value, DeviceFamily.ZENGGE.value]:
+    for family in [DeviceFamily.MOCK.value, DeviceFamily.ELK_BLEDOM.value, DeviceFamily.ZENGGE.value, DeviceFamily.BJ_LED.value]:
         for candidate in await get_driver(family).discover_candidates():
             key = (candidate.source, candidate.ble_identifier)
             existing = candidate_index.get(key)

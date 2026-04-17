@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from apps.api.app.ble.adapter import ResolvedBLECharacteristics
 from apps.api.app.ble.scanner import classify_scan_result
-from apps.api.app.drivers import ELKBledomDriver, ZenggeDriver
+from apps.api.app.drivers import BJLEDDriver, ELKBledomDriver, ZenggeDriver
 
 
 def test_classify_scan_result_detects_elk_name_prefix():
@@ -31,6 +31,12 @@ def test_classify_scan_result_detects_zengge_manufacturer_signature():
     )
     assert family == "ZENGGE"
     assert "product_id=0x33" in reason
+
+
+def test_classify_scan_result_detects_bj_led_name_prefix():
+    family, reason = classify_scan_result("BJ_LED", ["0000180F-0000-1000-8000-00805F9B34FB"])
+    assert family == "BJ_LED"
+    assert "BJ_LED hint" in reason
 
 
 def test_profile_selection_falls_back_to_generic_when_handle_does_not_match():
@@ -66,3 +72,24 @@ def test_zengge_commands_match_verified_packets():
     assert driver._build_power_command(True).hex(" ") == "00 01 80 00 00 0d 0e 0b 3b 23 00 00 00 00 00 00 00 32 00 00 90"
     assert driver._build_color_command(255, 0, 0).hex(" ") == "00 02 80 00 00 09 0a 0b 31 ff 00 00 00 00 f0 0f 2f"
     assert driver._build_brightness_command(30).hex(" ") == "00 03 80 00 00 0d 0e 0b 3b 01 00 00 1e 00 1e 00 00 00 00 00 78"
+
+
+def test_bj_led_profile_selection_picks_validated_name():
+    driver = BJLEDDriver()
+
+    profile = driver._pick_profile(
+        name="BJ_LED",
+        metadata={},
+    )
+
+    assert profile is not None
+    assert profile.key == "bj_led_mohuan_v1"
+
+
+def test_bj_led_commands_match_verified_packets():
+    driver = BJLEDDriver()
+
+    assert driver._build_power_command(True).hex(" ") == "69 96 02 01 01"
+    assert driver._build_power_command(False).hex(" ") == "69 96 02 01 00"
+    assert driver._build_color_command(255, 0, 0, 100).hex(" ") == "69 96 05 02 ff 00 00"
+    assert driver._build_color_command(255, 0, 0, 30).hex(" ") == "69 96 05 02 4c 00 00"

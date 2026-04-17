@@ -31,9 +31,20 @@ Sprint 3 is now implemented and validated on Windows for the second production B
 - live command execution through API and scheduler on a real `LEDnetWF02003348BC6C` device
 - recurring and astronomical rules both executed successfully on the real ZENGGE-family device
 
+## Sprint 4 status
+
+Sprint 4 is now implemented and validated on Windows for the third production BLE family:
+
+- BJ_LED / MohuanLED discovery classification for the validated `BJ_LED` advertising path
+- first production BJ/Mohuan driver for the confirmed `eea0 / ee01 / ee02` profile
+- onboarding from discovery into saved devices without breaking the existing ELK-BLEDOM and ZENGGE paths
+- live command execution through API and scheduler on a real `BJ_LED` device
+- recurring and astronomical rules both executed successfully on the real BJ-family device
+- all three core families now have one verified end-to-end production path in the current architecture
+
 ## Next implementation slices
 
-1. Add the next real family driver without regressing the now-validated ELK-BLEDOM and ZENGGE paths.
-2. Expand discovery heuristics for additional LEDnetWF / IOTBT variants while keeping manual family override.
+1. Polish mixed-family group and scene flows now that ELK-BLEDOM, ZENGGE, and BJ_LED each have a validated production path.
+2. Expand discovery heuristics for additional adjacent variants only when backed by real hardware validation.
 3. Expand action-links and NFC entrypoints on top of the shared action execution layer.
-4. Polish mixed-family group and scene flows.
+4. Improve state feedback where families expose reliable notification or readback paths.

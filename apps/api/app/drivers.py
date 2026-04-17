@@ -14,6 +14,9 @@ ELK_BLEDOM_WRITE_UUID = "0000fff3-0000-1000-8000-00805f9b34fb"
 ELK_BLEDOM_READ_UUID = "0000fff4-0000-1000-8000-00805f9b34fb"
 ZENGGE_WRITE_UUID = "0000ff01-0000-1000-8000-00805f9b34fb"
 ZENGGE_NOTIFY_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
+BJ_LED_SERVICE_UUID = "0000eea0-0000-1000-8000-00805f9b34fb"
+BJ_LED_WRITE_UUID = "0000ee01-0000-1000-8000-00805f9b34fb"
+BJ_LED_READ_UUID = "0000ee02-0000-1000-8000-00805f9b34fb"
 
 
 @dataclass(slots=True)
@@ -60,6 +63,17 @@ class ZenggeProfile:
     product_ids: tuple[int, ...]
     ble_versions: tuple[int, ...]
     name_prefixes: tuple[str, ...]
+    preferred_write_uuids: tuple[str, ...]
+    preferred_read_uuids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BJLedProfile:
+    key: str
+    family: str
+    name_prefixes: tuple[str, ...]
+    name_hints: tuple[str, ...]
+    preferred_service_uuids: tuple[str, ...]
     preferred_write_uuids: tuple[str, ...]
     preferred_read_uuids: tuple[str, ...]
 
@@ -136,6 +150,29 @@ ZENGGE_PROFILES = (
 )
 
 ZENGGE_PROFILE_INDEX = {profile.key: profile for profile in ZENGGE_PROFILES}
+
+BJ_LED_CAPABILITIES = {
+    "power": True,
+    "brightness": True,
+    "rgb": True,
+    "white_channel": False,
+    "effects": False,
+    "readback_state": False,
+}
+
+BJ_LED_PROFILES = (
+    BJLedProfile(
+        key="bj_led_mohuan_v1",
+        family=DeviceFamily.BJ_LED.value,
+        name_prefixes=("bj_led", "bj_led_m"),
+        name_hints=("mohuan", "mohuanled"),
+        preferred_service_uuids=(BJ_LED_SERVICE_UUID,),
+        preferred_write_uuids=(BJ_LED_WRITE_UUID,),
+        preferred_read_uuids=(BJ_LED_READ_UUID, BJ_LED_WRITE_UUID),
+    ),
+)
+
+BJ_LED_PROFILE_INDEX = {profile.key: profile for profile in BJ_LED_PROFILES}
 
 
 class LightDriver(Protocol):
@@ -541,18 +578,201 @@ class ZenggeDriver:
         }
 
 
+class BJLEDDriver:
+    family = DeviceFamily.BJ_LED.value
+
+    def __init__(self) -> None:
+        self._scanner = BleakDiscoveryScanner()
+        self._adapter = BleakBLEAdapter()
+
+    async def discover_candidates(self) -> list[DriverCandidate]:
+        results = await self._scanner.scan()
+        return [self._scan_result_to_candidate(item) for item in results]
+
+    async def probe(self, ble_identifier: str, name: str | None = None) -> ProbeResult:
+        scan_result = await self._find_scan_result(ble_identifier)
+        metadata = scan_result.metadata if scan_result else {}
+        resolved_name = (scan_result.name if scan_result else None) or name
+        profile = self._pick_profile(resolved_name, metadata)
+        if profile is None:
+            raise RuntimeError(
+                "No verified BJ_LED / MohuanLED profile found for this device yet. "
+                "Sprint 4 currently supports the validated BJ_LED controller path."
+            )
+
+        resolved = await self._adapter.inspect_characteristics(
+            identifier=ble_identifier,
+            preferred_write_uuids=profile.preferred_write_uuids,
+            preferred_read_uuids=profile.preferred_read_uuids,
+        )
+        if not set(profile.preferred_service_uuids).intersection({value.lower() for value in resolved.service_uuids}):
+            raise RuntimeError(
+                "Connected device does not expose the validated BJ_LED service layout "
+                f"({profile.preferred_service_uuids})."
+            )
+
+        return ProbeResult(
+            family=profile.family,
+            capabilities=BJ_LED_CAPABILITIES.copy(),
+            metadata=self._resolved_metadata(profile, resolved, metadata),
+        )
+
+    async def turn_on(self, device: Device) -> None:
+        await self._write_for_device(device, self._build_power_command(True))
+
+    async def turn_off(self, device: Device) -> None:
+        await self._write_for_device(device, self._build_power_command(False))
+
+    async def set_brightness(self, device: Device, value: int) -> None:
+        brightness = max(0, min(int(value), 100))
+        rgb = self._base_rgb_for_device(device)
+        await self._write_for_device(device, self._build_color_command(rgb["r"], rgb["g"], rgb["b"], brightness))
+
+    async def set_rgb(self, device: Device, r: int, g: int, b: int) -> None:
+        state = device.desired_state_json or device.known_state_json or {}
+        brightness = max(0, min(int(state.get("brightness", 100)), 100))
+        await self._write_for_device(
+            device,
+            self._build_color_command(
+                r=max(0, min(int(r), 255)),
+                g=max(0, min(int(g), 255)),
+                b=max(0, min(int(b), 255)),
+                brightness=brightness,
+            ),
+        )
+
+    async def get_capabilities(self, device: Device | None = None) -> dict[str, bool]:
+        return BJ_LED_CAPABILITIES.copy()
+
+    def _scan_result_to_candidate(self, result: BLEScanResult) -> DriverCandidate:
+        detected_family = result.detected_family or "Unclassified"
+        is_verified_profile = self._pick_profile(result.name, result.metadata) is not None
+        supported = detected_family in {DeviceFamily.BJ_LED.value, DeviceFamily.MOHUANLED.value} and is_verified_profile
+        return DriverCandidate(
+            family=detected_family,
+            name=result.name,
+            ble_identifier=result.ble_identifier,
+            address=result.address,
+            vendor_name=result.metadata.get("vendor_name"),
+            rssi=result.rssi,
+            source=result.source,
+            is_supported=supported,
+            classification_reason=result.classification_reason,
+            advertised_services=result.advertised_services,
+            manufacturer_data=result.manufacturer_data,
+            metadata=result.metadata,
+        )
+
+    async def _find_scan_result(self, ble_identifier: str) -> BLEScanResult | None:
+        for result in await self._scanner.scan(timeout=4):
+            if result.ble_identifier == ble_identifier or result.address == ble_identifier:
+                return result
+        return None
+
+    async def _write_for_device(self, device: Device, payload: bytes) -> None:
+        profile = self._profile_from_device(device)
+        if profile is None:
+            raise BLEAdapterError(
+                "No verified BJ_LED profile is attached to this device. "
+                "Re-onboard it from discovery so we can capture metadata."
+            )
+
+        try:
+            resolved = await self._adapter.write_command(
+                identifier=device.ble_identifier,
+                payload=payload,
+                preferred_write_uuids=profile.preferred_write_uuids,
+                preferred_read_uuids=profile.preferred_read_uuids,
+            )
+        except BLEAdapterError as exc:
+            LOGGER.error("BJ_LED command failed for %s: %s", device.name, exc, exc_info=True)
+            raise
+
+        existing_ble = (device.meta_json or {}).get("ble") or {}
+        device.meta_json = {
+            **(device.meta_json or {}),
+            "ble": self._resolved_metadata(profile, resolved, existing_ble),
+        }
+
+    def _profile_from_device(self, device: Device) -> BJLedProfile | None:
+        ble_meta = (device.meta_json or {}).get("ble") or {}
+        profile_key = ble_meta.get("driver_profile")
+        if profile_key and profile_key in BJ_LED_PROFILE_INDEX:
+            return BJ_LED_PROFILE_INDEX[profile_key]
+        return self._pick_profile(device.name, ble_meta)
+
+    def _pick_profile(self, name: str | None, metadata: dict[str, Any] | None) -> BJLedProfile | None:
+        normalized_name = (name or "").strip().lower()
+        metadata = metadata or {}
+        service_uuids = {value.lower() for value in metadata.get("service_uuids", [])}
+        characteristic_uuids = {value.lower() for value in metadata.get("characteristic_uuids", [])}
+
+        for profile in BJ_LED_PROFILES:
+            if any(normalized_name.startswith(prefix) for prefix in profile.name_prefixes):
+                return profile
+            if any(hint in normalized_name for hint in profile.name_hints):
+                return profile
+            if set(profile.preferred_service_uuids).intersection(service_uuids) and BJ_LED_WRITE_UUID in characteristic_uuids:
+                return profile
+
+        return None
+
+    def _base_rgb_for_device(self, device: Device) -> dict[str, int]:
+        for state in (device.desired_state_json or {}, device.known_state_json or {}):
+            rgb = state.get("rgb")
+            if isinstance(rgb, dict):
+                return {
+                    "r": max(0, min(int(rgb.get("r", 255)), 255)),
+                    "g": max(0, min(int(rgb.get("g", 255)), 255)),
+                    "b": max(0, min(int(rgb.get("b", 255)), 255)),
+                }
+        return {"r": 255, "g": 255, "b": 255}
+
+    def _build_power_command(self, turn_on: bool) -> bytes:
+        return bytes.fromhex("69 96 02 01 01" if turn_on else "69 96 02 01 00")
+
+    def _build_color_command(self, r: int, g: int, b: int, brightness: int) -> bytes:
+        brightness_pct = max(0, min(int(brightness), 100))
+        scaled = [
+            max(0, min(int(channel * brightness_pct / 100), 255))
+            for channel in (r, g, b)
+        ]
+        return bytes([0x69, 0x96, 0x05, 0x02, *scaled])
+
+    def _resolved_metadata(
+        self,
+        profile: BJLedProfile,
+        resolved: ResolvedBLECharacteristics,
+        metadata: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        metadata = metadata or {}
+        return {
+            "driver_profile": profile.key,
+            "protocol_hint": "mohuanled",
+            "feedback_supported": False,
+            "state_mode": "optimistic",
+            "write_uuid": resolved.write_uuid,
+            "read_uuid": resolved.read_uuid,
+            "write_handle": resolved.write_handle,
+            "service_uuids": resolved.service_uuids,
+            "characteristic_uuids": resolved.characteristic_uuids,
+            "platform_identifier": metadata.get("platform_identifier"),
+        }
+
+
 SUPPORTED_FAMILIES = [family.value for family in DeviceFamily]
 _mock_driver = MockLightDriver()
 _elk_driver = ELKBledomDriver()
 _zengge_driver = ZenggeDriver()
+_bj_led_driver = BJLEDDriver()
 DRIVER_REGISTRY: dict[str, LightDriver] = {
     DeviceFamily.MOCK.value: _mock_driver,
     DeviceFamily.ELK_BLEDOM.value: _elk_driver,
     DeviceFamily.DUOCO_STRIP.value: _elk_driver,
     DeviceFamily.ZENGGE.value: _zengge_driver,
     DeviceFamily.SURPLIFE.value: _zengge_driver,
-    DeviceFamily.MOHUANLED.value: _mock_driver,
-    DeviceFamily.BJ_LED.value: _mock_driver,
+    DeviceFamily.MOHUANLED.value: _bj_led_driver,
+    DeviceFamily.BJ_LED.value: _bj_led_driver,
 }
 
 

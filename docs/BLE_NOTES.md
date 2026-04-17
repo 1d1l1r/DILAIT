@@ -20,6 +20,18 @@
   - parsed firmware version byte: `0x20`
   - parsed LED hardware version byte: `0x0a`
 
+## Sprint 4 findings
+
+- The first validated BJ_LED-family production target was advertised as `BJ_LED` at `23:01:01:6C:15:81`.
+- Discovery classification now identifies this family from:
+  - advertised names such as `BJ_LED`
+  - validated GATT service/characteristic hints such as `eea0`, `ee01`, and `ee02`
+- The validated BJ device exposed the following live GATT shape on Windows:
+  - service `0000eea0-0000-1000-8000-00805f9b34fb`
+  - characteristic `0000ee01-0000-1000-8000-00805f9b34fb` write-without-response/read/notify, observed handle `5`
+  - characteristic `0000ee02-0000-1000-8000-00805f9b34fb` write/write-without-response/read, observed handle `7`
+- Readback from both `ee01` and `ee02` returned the same fixed 20-byte test pattern and did not reflect live light state changes.
+
 ## ZENGGE / Surplife validated GATT shape
 
 - Services observed on the validated device:
@@ -52,6 +64,33 @@
   - color write changed the RGB bytes in the advertising payload
   - brightness write reduced the advertised red channel from `ff` to `4d`
   - power-off write changed the power byte from `0x23` to `0x24`
+
+## BJ_LED / MohuanLED validated GATT shape
+
+- Services observed on the validated device:
+  - `00001800-0000-1000-8000-00805f9b34fb`
+  - `0000eea0-0000-1000-8000-00805f9b34fb`
+- Characteristics observed:
+  - `00002a00-0000-1000-8000-00805f9b34fb`
+  - `0000ee01-0000-1000-8000-00805f9b34fb` write-without-response/read/notify
+  - `0000ee02-0000-1000-8000-00805f9b34fb` write/write-without-response/read
+- Actual write handle seen on the validated device: `5`
+- Notifications on `ee01` were not usable on Windows during validation: enabling notify returned `Protocol Error 0x03: Write Not Permitted`.
+
+## Working BJ_LED command notes
+
+- Verified power-on packet:
+  - `69 96 02 01 01`
+- Verified power-off packet:
+  - `69 96 02 01 00`
+- Verified RGB packet for solid red:
+  - `69 96 05 02 ff 00 00`
+- Verified brightness behavior:
+  - there is no separate brightness opcode in the validated profile
+  - brightness is implemented by scaling RGB channels before sending the color packet
+  - example verified `30%` red payload:
+    `69 96 05 02 4c 00 00`
+- This matches the minimal MohuanLED/BJ behavior documented by the upstream Home Assistant custom integration and its snoop notes.
 
 ## ELK-BLEDOM validated GATT shape
 
@@ -105,6 +144,21 @@
   - recurring rule executed `brightness`
   - astronomical rule executed `color`
   - both runs logged `success`
+- Discovery -> onboarding -> saved device control also worked for the validated `BJ_LED` MohuanLED-family controller on Windows on 2026-04-17.
+- `POST /api/devices` for the BJ target stored:
+  - `driver_profile = bj_led_mohuan_v1`
+  - `protocol_hint = mohuanled`
+  - `write_uuid = ee01`
+  - `state_mode = optimistic`
+- Manual BJ-family actions succeeded without BLE errors:
+  - on
+  - off
+  - brightness `30%`
+  - RGB `(255, 0, 0)`
+- Scheduler path also succeeded on the validated BJ-family device:
+  - recurring rule executed `brightness`
+  - astronomical rule executed `color`
+  - both runs logged `success`
 
 ## Limitations and quirks
 
@@ -112,4 +166,6 @@
 - Visual confirmation of each command still depends on observing the physical strip; the terminal validation confirms successful BLE writes and successful scheduler execution records.
 - Sprint 3 intentionally supports the verified LEDnetWF `product_id 0x33` control path first. Other ZENGGE-family variants such as `IOTBT...` remain discoverable but not yet treated as production-supported.
 - `JTX-RGB` remained visible nearby with service `2022`, but it was not pulled into Sprint 3 because it did not match the validated LEDnetWF command path.
-- `BJ_LED` devices are now visible in discovery, but remain intentionally unsupported in Sprint 2.
+- BJ/Mohuan currently uses optimistic state only. The validated hardware did not provide authoritative notification/readback, and direct reads from `ee01`/`ee02` returned a static test-pattern buffer rather than live state.
+- Sprint 4 intentionally supports one verified BJ/Mohuan profile first: advertised `BJ_LED` with `eea0 / ee01 / ee02`.
+- One onboarding edge case was fixed during Sprint 4: if the user assigned a custom device name before creation, probe had to prefer the live advertised name from the scan result over the custom name so profile selection would still lock onto the validated BJ family.

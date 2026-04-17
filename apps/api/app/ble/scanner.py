@@ -36,6 +36,19 @@ ZENGGE_SERVICE_HINTS = {
     "00005b00-0000-1000-8000-00805f9b34fb",
     "0000fe00-0000-1000-8000-00805f9b34fb",
 }
+BJ_LED_NAME_PREFIXES = (
+    "bj_led",
+    "bj_led_m",
+)
+MOHUANLED_NAME_HINTS = (
+    "mohuan",
+    "mohuanled",
+)
+BJ_LED_SERVICE_HINTS = {
+    "0000eea0-0000-1000-8000-00805f9b34fb",
+    "0000ee01-0000-1000-8000-00805f9b34fb",
+    "0000ee02-0000-1000-8000-00805f9b34fb",
+}
 
 
 @dataclass(slots=True)
@@ -121,6 +134,16 @@ def classify_scan_result(
         if product_id is not None:
             return DeviceFamily.ZENGGE.value, f"manufacturer payload matched ZENGGE family (product_id=0x{product_id:02X})"
         return DeviceFamily.ZENGGE.value, "manufacturer payload matched ZENGGE family"
+
+    if any(normalized_name.startswith(prefix) for prefix in BJ_LED_NAME_PREFIXES):
+        return DeviceFamily.BJ_LED.value, f"name matched BJ_LED hint '{name}'"
+
+    if any(hint in normalized_name for hint in MOHUANLED_NAME_HINTS):
+        return DeviceFamily.MOHUANLED.value, f"name matched MohuanLED hint '{name}'"
+
+    if normalized_services.intersection(BJ_LED_SERVICE_HINTS):
+        matched = sorted(normalized_services.intersection(BJ_LED_SERVICE_HINTS))[0]
+        return DeviceFamily.BJ_LED.value, f"advertised BJ_LED service {matched}"
 
     return None, None
 
