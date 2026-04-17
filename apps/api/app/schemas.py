@@ -189,9 +189,15 @@ class DiscoveryCandidateRead(APIModel):
     family: str
     name: str
     ble_identifier: str
+    address: str | None = None
     vendor_name: str | None
     rssi: int | None
+    source: str = "real"
+    is_supported: bool = True
+    classification_reason: str | None = None
     services: list[str] = Field(default_factory=list)
+    manufacturer_data: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DashboardRead(APIModel):
@@ -208,4 +214,3 @@ class SystemInfoRead(APIModel):
     timezone: str
     database_url: str
     supported_families: list[str]
-

@@ -22,6 +22,8 @@ class Settings:
     default_timezone: str = "Asia/Qyzylorda"
     database_url: str = f"sqlite+aiosqlite:///{(DATA_DIR / 'lights_hub.db').as_posix()}"
     scheduler_poll_seconds: float = 1.0
+    ble_scan_timeout_seconds: float = 6.0
+    ble_connect_timeout_seconds: float = 8.0
 
     @property
     def tzinfo(self) -> ZoneInfo:
@@ -61,4 +63,3 @@ async def init_db() -> None:
 
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-

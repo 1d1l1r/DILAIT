@@ -88,6 +88,29 @@ body {
   flex-wrap: wrap;
 }
 
+.device-control-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.device-control-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.device-control-grid input[type="range"] {
+  padding-inline: 0;
+}
+
+.device-control-grid input[type="color"] {
+  min-height: 48px;
+  padding: 4px;
+}
+
 .stack {
   display: grid;
   gap: 10px;
@@ -191,5 +214,8 @@ code {
     align-items: stretch;
     flex-direction: column;
   }
-}
 
+  .device-control-grid {
+    grid-template-columns: 1fr;
+  }
+}

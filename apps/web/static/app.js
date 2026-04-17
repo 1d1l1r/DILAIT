@@ -15,6 +15,7 @@ const els = {
 
 const state = {
   system: null,
+  selectedCandidate: null,
 };
 
 async function api(path, options = {}) {
@@ -47,20 +48,33 @@ function deviceCard(device) {
   const template = document.getElementById("device-card-template");
   const node = template.content.firstElementChild.cloneNode(true);
   const known = device.known_state_json || {};
+  const brightnessValue = known.brightness ?? 100;
+  const rgb = known.rgb || { r: 255, g: 255, b: 255 };
   node.querySelector(".item-main").innerHTML = `
     <strong>#${device.id} ${device.name}</strong>
     <div class="badge">${device.family}</div>
     <div>State: ${known.is_on ? "on" : "off"}, brightness ${known.brightness ?? 100}%</div>
-    <div class="muted">${device.ble_identifier}</div>
+    <div class="muted">${device.ble_identifier}${device.ble_address ? ` | ${device.ble_address}` : ""}</div>
   `;
+  const brightnessInput = node.querySelector('[data-field="brightness"]');
+  const colorInput = node.querySelector('[data-field="color"]');
+  brightnessInput.value = String(brightnessValue);
+  colorInput.value = rgbToHex(rgb);
+
   node.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       const action = button.dataset.action;
-      if (action === "warm") {
+      if (action === "brightness") {
+        await api(`/api/devices/${device.id}/brightness`, {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({ value: Number(brightnessInput.value) }),
+        });
+      } else if (action === "color") {
         await api(`/api/devices/${device.id}/color`, {
           method: "POST",
           headers: jsonHeaders,
-          body: JSON.stringify({ r: 255, g: 160, b: 88 }),
+          body: JSON.stringify(hexToRgb(colorInput.value)),
         });
       } else {
         await api(`/api/devices/${device.id}/${action}`, { method: "POST" });
@@ -69,6 +83,52 @@ function deviceCard(device) {
     });
   });
   return node;
+}
+
+function rgbToHex(rgb) {
+  const toHex = (value) => Number(value || 0).toString(16).padStart(2, "0");
+  return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
+}
+
+function hexToRgb(value) {
+  const normalized = value.replace("#", "");
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
+function selectCandidate(candidate) {
+  state.selectedCandidate = candidate;
+  const form = document.getElementById("device-form");
+  form.querySelector("[name=name]").value = candidate.name;
+  form.querySelector("[name=ble_identifier]").value = candidate.ble_identifier;
+  form.querySelector("[name=ble_address]").value = candidate.address || candidate.ble_identifier;
+  form.querySelector("[name=vendor_name]").value = candidate.vendor_name || "";
+  if (state.system?.supported_families?.includes(candidate.family)) {
+    form.querySelector("[name=family]").value = candidate.family;
+  }
+  form.querySelector("[name=meta_json]").value = JSON.stringify({
+    discovery: {
+      source: candidate.source,
+      classification_reason: candidate.classification_reason,
+      services: candidate.services,
+      manufacturer_data: candidate.manufacturer_data,
+      metadata: candidate.metadata,
+    },
+  });
+  document.getElementById("device-candidate-note").textContent =
+    `Selected discovery candidate: ${candidate.name} (${candidate.family})`;
+}
+
+function clearSelectedCandidate() {
+  state.selectedCandidate = null;
+  const form = document.getElementById("device-form");
+  form.querySelector("[name=meta_json]").value = "{}";
+  form.querySelector("[name=vendor_name]").value = "";
+  form.querySelector("[name=ble_address]").value = "";
+  document.getElementById("device-candidate-note").textContent = "Manual entry or pick a discovery candidate below.";
 }
 
 function simpleCard(title, details, action) {
@@ -175,24 +235,12 @@ async function refreshDiscovery() {
     (candidate) =>
       simpleCard(
         candidate.name,
-        `${candidate.family} | RSSI ${candidate.rssi ?? "n/a"} | ${candidate.ble_identifier}`,
+        `${candidate.family} | ${candidate.source} | RSSI ${candidate.rssi ?? "n/a"} | ${candidate.ble_identifier}<br><span class="muted">${candidate.classification_reason || "manual family override available"}${candidate.services?.length ? ` | services: ${candidate.services.join(", ")}` : ""}</span>`,
         (() => {
           const button = document.createElement("button");
           button.className = "button button-small";
-          button.textContent = "Add";
-          button.addEventListener("click", async () => {
-            await api("/api/devices", {
-              method: "POST",
-              headers: jsonHeaders,
-              body: JSON.stringify({
-                name: candidate.name,
-                family: candidate.family,
-                ble_identifier: candidate.ble_identifier,
-                vendor_name: candidate.vendor_name,
-              }),
-            });
-            await refreshAll();
-          });
+          button.textContent = "Use in onboarding";
+          button.addEventListener("click", () => selectCandidate(candidate));
           return button;
         })(),
       ),
@@ -206,6 +254,9 @@ function handleForm(formId, onSubmit) {
     const data = Object.fromEntries(new FormData(form).entries());
     await onSubmit(data);
     form.reset();
+    if (formId === "device-form") {
+      clearSelectedCandidate();
+    }
     if (formId === "rule-form") {
       form.querySelector("[name=timezone]").value = state.system?.timezone || "Asia/Qyzylorda";
       form.querySelector("[name=days_of_week_mask]").value = 127;
@@ -231,7 +282,10 @@ handleForm("device-form", (data) =>
       name: data.name,
       family: data.family,
       ble_identifier: data.ble_identifier,
+      ble_address: data.ble_address || null,
+      vendor_name: data.vendor_name || null,
       room_id: data.room_id ? Number(data.room_id) : null,
+      meta_json: JSON.parse(data.meta_json || "{}"),
     }),
   }),
 );
@@ -297,9 +351,9 @@ handleForm("rule-form", (data) =>
 
 document.getElementById("refresh-all").addEventListener("click", refreshAll);
 document.getElementById("discover-devices").addEventListener("click", refreshDiscovery);
+document.getElementById("clear-onboarding").addEventListener("click", clearSelectedCandidate);
 
 refreshAll().catch((error) => {
   console.error(error);
   alert(error.message);
 });
-

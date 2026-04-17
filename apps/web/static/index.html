@@ -36,13 +36,18 @@
         </article>
 
         <article class="card">
-          <h2>Add Mock Device</h2>
+          <h2>Onboard Device</h2>
           <form id="device-form" class="stack">
+            <div id="device-candidate-note" class="tip">Manual entry or pick a discovery candidate below.</div>
             <input name="name" placeholder="TV backlight" required />
             <input name="ble_identifier" placeholder="mock://tv-backlight" required />
+            <input name="ble_address" placeholder="BLE address (optional)" />
+            <input name="vendor_name" placeholder="Vendor name (optional)" />
             <select name="family" id="device-family"></select>
             <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
+            <input name="meta_json" type="hidden" value="{}" />
             <button class="button" type="submit">Save device</button>
+            <button id="clear-onboarding" class="button button-secondary" type="button">Clear candidate</button>
           </form>
         </article>
       </section>
@@ -145,7 +150,18 @@
         <div class="item-actions">
           <button data-action="on" class="button button-small">On</button>
           <button data-action="off" class="button button-small button-secondary">Off</button>
-          <button data-action="warm" class="button button-small button-ghost">Warm</button>
+        </div>
+        <div class="device-control-grid">
+          <label>
+            <span>Brightness</span>
+            <input data-field="brightness" type="range" min="0" max="100" value="100" />
+          </label>
+          <button data-action="brightness" class="button button-small">Apply Brightness</button>
+          <label>
+            <span>Color</span>
+            <input data-field="color" type="color" value="#ffffff" />
+          </label>
+          <button data-action="color" class="button button-small button-ghost">Apply Color</button>
         </div>
       </article>
     </template>
@@ -153,4 +169,3 @@
     <script src="/static/app.js" type="module"></script>
   </body>
 </html>
-

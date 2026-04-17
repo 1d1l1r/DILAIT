@@ -4,17 +4,17 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from apps.api.app.core import DAY_PRESETS, settings
+from apps.api.app.ble.adapter import BLEAdapterError
 from apps.api.app.drivers import DriverCandidate, get_driver
 from apps.api.app.models import (
     ActionType,
     Device,
     DeviceFamily,
     Group,
-    GroupDevice,
     Room,
     RuleRun,
     Scene,
@@ -91,6 +91,13 @@ async def list_devices(session) -> list[Device]:
 async def create_device(session, payload: DeviceCreate) -> Device:
     driver = get_driver(payload.family.value)
     capabilities = await driver.get_capabilities()
+    metadata = dict(payload.meta_json)
+    try:
+        probe_result = await driver.probe(payload.ble_identifier, name=payload.name)
+        capabilities = probe_result.capabilities
+        metadata = {**metadata, "ble": probe_result.metadata}
+    except Exception as exc:  # noqa: BLE001
+        metadata = {**metadata, "probe_warning": str(exc)}
     now = datetime.now(UTC)
     device = Device(
         name=payload.name,
@@ -101,7 +108,7 @@ async def create_device(session, payload: DeviceCreate) -> Device:
         room_id=payload.room_id,
         is_enabled=payload.is_enabled,
         capabilities_json=capabilities,
-        meta_json=payload.meta_json,
+        meta_json=metadata,
         desired_state_json={"is_on": False, "brightness": 100, "rgb": {"r": 255, "g": 255, "b": 255}},
         known_state_json={"is_on": False, "brightness": 100, "rgb": {"r": 255, "g": 255, "b": 255}},
         last_seen_at=now,
@@ -133,29 +140,32 @@ async def apply_device_action(session, device_id: int, action_name: str, payload
     driver = get_driver(device.family.value if isinstance(device.family, DeviceFamily) else str(device.family))
     desired_patch: dict[str, Any] = {}
 
-    if action_name == ActionType.ON.value:
-        await driver.turn_on(device)
-        desired_patch = {"is_on": True}
-    elif action_name == ActionType.OFF.value:
-        await driver.turn_off(device)
-        desired_patch = {"is_on": False}
-    elif action_name == ActionType.TOGGLE.value:
-        next_state = not device.known_state_json.get("is_on", False)
-        desired_patch = {"is_on": next_state}
-        if next_state:
+    try:
+        if action_name == ActionType.ON.value:
             await driver.turn_on(device)
-        else:
+            desired_patch = {"is_on": True}
+        elif action_name == ActionType.OFF.value:
             await driver.turn_off(device)
-    elif action_name == ActionType.BRIGHTNESS.value:
-        value = int(payload["value"])
-        await driver.set_brightness(device, value)
-        desired_patch = {"is_on": True, "brightness": value}
-    elif action_name == ActionType.COLOR.value:
-        rgb = {"r": int(payload["r"]), "g": int(payload["g"]), "b": int(payload["b"])}
-        await driver.set_rgb(device, rgb["r"], rgb["g"], rgb["b"])
-        desired_patch = {"is_on": True, "rgb": rgb}
-    else:
-        raise HTTPException(status_code=400, detail=f"Unsupported device action: {action_name}")
+            desired_patch = {"is_on": False}
+        elif action_name == ActionType.TOGGLE.value:
+            next_state = not device.known_state_json.get("is_on", False)
+            desired_patch = {"is_on": next_state}
+            if next_state:
+                await driver.turn_on(device)
+            else:
+                await driver.turn_off(device)
+        elif action_name == ActionType.BRIGHTNESS.value:
+            value = int(payload["value"])
+            await driver.set_brightness(device, value)
+            desired_patch = {"is_on": True, "brightness": value}
+        elif action_name == ActionType.COLOR.value:
+            rgb = {"r": int(payload["r"]), "g": int(payload["g"]), "b": int(payload["b"])}
+            await driver.set_rgb(device, rgb["r"], rgb["g"], rgb["b"])
+            desired_patch = {"is_on": True, "rgb": rgb}
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported device action: {action_name}")
+    except BLEAdapterError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     device.desired_state_json = _state_merge(device.desired_state_json, desired_patch)
     device.known_state_json = _state_merge(device.known_state_json, desired_patch)
@@ -250,21 +260,28 @@ async def add_scene_action(session, scene_id: int, payload: SceneActionCreate) -
 
 async def discover_candidates() -> list[DiscoveryCandidateRead]:
     candidates: list[DriverCandidate] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     for family in [DeviceFamily.MOCK.value, DeviceFamily.ELK_BLEDOM.value]:
         for candidate in await get_driver(family).discover_candidates():
-            if candidate.ble_identifier in seen:
+            key = (candidate.source, candidate.ble_identifier)
+            if key in seen:
                 continue
-            seen.add(candidate.ble_identifier)
+            seen.add(key)
             candidates.append(candidate)
     return [
         DiscoveryCandidateRead(
             family=item.family,
             name=item.name,
             ble_identifier=item.ble_identifier,
+            address=item.address,
             vendor_name=item.vendor_name,
             rssi=item.rssi,
-            services=item.services or [],
+            source=item.source,
+            is_supported=item.is_supported,
+            classification_reason=item.classification_reason,
+            services=item.advertised_services or [],
+            manufacturer_data=item.manufacturer_data,
+            metadata=item.metadata,
         )
         for item in candidates
     ]
@@ -386,4 +403,3 @@ async def dashboard_summary(session) -> dict[str, Any]:
         "day_presets": DAY_PRESETS,
         "default_timezone": settings.default_timezone,
     }
-

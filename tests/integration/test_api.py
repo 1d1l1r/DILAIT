@@ -35,6 +35,7 @@ def test_device_rule_flow():
     )
     assert device_response.status_code == 200
     device = device_response.json()
+    assert device["meta_json"]["ble"]["simulated"] is True
 
     on_response = client.post(f"/api/devices/{device['id']}/on")
     assert on_response.status_code == 200
