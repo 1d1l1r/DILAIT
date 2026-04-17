@@ -316,5 +316,58 @@ def test_ui_shell_routes_are_split():
 
     assert root.status_code == 200
     assert advanced.status_code == 200
-    assert "Everyday control" in root.text
-    assert "Advanced Admin" in advanced.text
+    assert "Rooms first control for everyday use." in root.text
+    assert "Lights Hub Panel" in advanced.text
+
+
+def test_rule_can_be_retargeted_and_retyped():
+    db_path, originals = install_temp_database()
+    try:
+        reset_database()
+        client = TestClient(app)
+
+        device = create_device(client, name="Schedule strip", family="mock", ble_identifier="mock://schedule-strip")
+        scene = client.post("/api/scenes", json={"name": "Schedule scene"}).json()
+
+        create = client.post(
+            "/api/rules",
+            json={
+                "name": "Night off",
+                "target_type": "device",
+                "target_id": device["id"],
+                "rule_type": "recurring",
+                "timezone": "Asia/Qyzylorda",
+                "days_of_week_mask": 127,
+                "payload_json": {"action": "off", "time": "22:30:00"},
+            },
+        )
+        assert create.status_code == 200
+        rule = create.json()
+
+        update = client.patch(
+            f"/api/rules/{rule['id']}",
+            json={
+                "name": "Scene sunrise",
+                "target_type": "scene",
+                "target_id": scene["id"],
+                "rule_type": "astronomical",
+                "timezone": "Asia/Qyzylorda",
+                "days_of_week_mask": 127,
+                "payload_json": {
+                    "action": "run_scene",
+                    "solar_event": "sunrise",
+                    "offset_minutes": 15,
+                    "lat": 43.2389,
+                    "lon": 76.8897,
+                },
+            },
+        )
+        assert update.status_code == 200
+        updated = update.json()
+        assert updated["name"] == "Scene sunrise"
+        assert updated["target_type"] == "scene"
+        assert updated["target_id"] == scene["id"]
+        assert updated["rule_type"] == "astronomical"
+        assert updated["payload_json"]["action"] == "run_scene"
+    finally:
+        restore_temp_database(db_path, originals)

@@ -186,6 +186,9 @@ class RuleCreate(APIModel):
 
 class RuleUpdate(APIModel):
     name: str | None = None
+    target_type: TargetType | None = None
+    target_id: int | None = None
+    rule_type: RuleType | None = None
     is_enabled: bool | None = None
     timezone: str | None = None
     days_of_week_mask: int | None = None
