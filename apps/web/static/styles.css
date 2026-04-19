@@ -93,6 +93,14 @@ body {
   min-width: 138px;
 }
 
+.hero-back {
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(60, 217, 234, 0.16), rgba(139, 245, 208, 0.22));
+  color: var(--accent-dark);
+  border: 1px solid rgba(60, 217, 234, 0.26);
+  box-shadow: 0 10px 22px rgba(60, 217, 234, 0.14);
+}
+
 .compact-stack {
   gap: 8px;
 }

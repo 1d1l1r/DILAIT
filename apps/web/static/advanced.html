@@ -13,15 +13,15 @@
           <p class="eyebrow">Advanced</p>
           <h1>DILIAT Panel</h1>
           <p class="muted">
-            Инженерная панель для raw onboarding, детального discovery, ручных override-настроек, сцен, правил,
-            action links и BLE-активности.
+            Engineering and debug tools for raw onboarding, discovery inspection, manual overrides, scenes, rules,
+            action links, and BLE activity details.
           </p>
-          <div id="discovery-status" class="tip">BLE-сканирование не запущено.</div>
+          <div id="discovery-status" class="tip">BLE scan is idle.</div>
         </div>
         <div class="hero-actions">
-          <a href="/" class="button button-secondary">Назад</a>
-          <button id="refresh-all" class="button">Обновить</button>
-          <button id="discover-devices" class="button button-secondary">Скан BLE</button>
+          <a href="/" class="button button-secondary hero-back">Back</a>
+          <button id="refresh-all" class="button">Refresh</button>
+          <button id="discover-devices" class="button button-secondary">Scan BLE</button>
         </div>
       </section>
 
@@ -29,30 +29,30 @@
 
       <section class="grid two-up">
         <article class="card">
-          <h2>Быстро добавить комнату</h2>
+          <h2>Quick Add Room</h2>
           <form id="room-form" class="stack">
-            <input name="name" placeholder="Гостиная" required />
+            <input name="name" placeholder="Living room" required />
             <input name="sort_order" type="number" value="0" />
-            <button class="button" type="submit">Сохранить комнату</button>
+            <button class="button" type="submit">Save room</button>
           </form>
           <div id="rooms-list" class="list compact"></div>
         </article>
 
         <article class="card">
-          <h2>Добавить устройство</h2>
+          <h2>Onboard Device</h2>
           <form id="device-form" class="stack">
-            <div id="device-candidate-note" class="tip">Можно ввести руками или выбрать discovery-кандидата ниже.</div>
-            <input name="name" placeholder="Подсветка ТВ" required />
+            <div id="device-candidate-note" class="tip">Manual entry or pick a discovery candidate below.</div>
+            <input name="name" placeholder="TV backlight" required />
             <input name="ble_identifier" placeholder="BLE identifier" required />
-            <input name="ble_address" placeholder="BLE address (необязательно)" />
-            <input name="vendor_name" placeholder="Vendor name (необязательно)" />
+            <input name="ble_address" placeholder="BLE address (optional)" />
+            <input name="vendor_name" placeholder="Vendor name (optional)" />
             <select name="family" id="device-family"></select>
-            <input name="room_id" type="number" min="1" placeholder="Room ID (необязательно)" />
+            <input name="room_id" type="number" min="1" placeholder="Room ID (optional)" />
             <input name="meta_json" type="hidden" value="{}" />
-            <button class="button" type="submit">Сохранить устройство</button>
-            <button id="clear-onboarding" class="button button-secondary" type="button">Сбросить кандидата</button>
-        </form>
-      </article>
+            <button class="button" type="submit">Save device</button>
+            <button id="clear-onboarding" class="button button-secondary" type="button">Clear candidate</button>
+          </form>
+        </article>
       </section>
 
       <section class="grid two-up">
