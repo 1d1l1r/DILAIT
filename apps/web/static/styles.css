@@ -1,14 +1,14 @@
 :root {
-  --bg: #f4efe7;
-  --surface: rgba(255, 250, 245, 0.9);
-  --surface-strong: #fff8ef;
-  --text: #18222b;
-  --muted: #5c6770;
-  --accent: #ef6b4a;
-  --accent-dark: #cb4d2e;
-  --accent-soft: rgba(239, 107, 74, 0.12);
-  --line: rgba(24, 34, 43, 0.08);
-  --shadow: 0 14px 36px rgba(58, 37, 16, 0.1);
+  --bg: #edf7f6;
+  --surface: rgba(255, 255, 255, 0.88);
+  --surface-strong: rgba(250, 255, 255, 0.95);
+  --text: #12303a;
+  --muted: #607784;
+  --accent: #3cd9ea;
+  --accent-dark: #168fa4;
+  --accent-soft: rgba(60, 217, 234, 0.16);
+  --line: rgba(18, 48, 58, 0.09);
+  --shadow: 0 18px 42px rgba(66, 152, 168, 0.12);
   --radius: 22px;
   font-family: "Segoe UI", "Helvetica Neue", sans-serif;
 }
@@ -21,9 +21,9 @@ body {
   margin: 0;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(255, 210, 143, 0.55), transparent 28%),
-    radial-gradient(circle at top right, rgba(239, 107, 74, 0.15), transparent 30%),
-    linear-gradient(180deg, #fffaf4 0%, var(--bg) 100%);
+    radial-gradient(circle at top left, rgba(99, 236, 255, 0.28), transparent 28%),
+    radial-gradient(circle at top right, rgba(133, 255, 191, 0.18), transparent 30%),
+    linear-gradient(180deg, #fbffff 0%, var(--bg) 100%);
 }
 
 .shell {
@@ -161,17 +161,18 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--accent), #ff946e);
-  color: white;
+  background: linear-gradient(135deg, var(--accent), #8bf5d0);
+  color: #07303b;
   border: none;
   font-weight: 700;
   text-decoration: none;
+  box-shadow: 0 12px 26px rgba(60, 217, 234, 0.2);
 }
 
 .button-secondary {
   background: var(--accent-soft);
   color: var(--accent-dark);
-  border: 1px solid rgba(239, 107, 74, 0.18);
+  border: 1px solid rgba(60, 217, 234, 0.18);
 }
 
 .button-ghost {

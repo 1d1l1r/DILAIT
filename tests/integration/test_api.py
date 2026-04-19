@@ -316,7 +316,7 @@ def test_ui_shell_routes_are_split():
 
     assert root.status_code == 200
     assert advanced.status_code == 200
-    assert "Rooms first control for everyday use." in root.text
+    assert "Управление светом по комнатам на каждый день." in root.text
     assert "Lights Hub Panel" in advanced.text
 
 

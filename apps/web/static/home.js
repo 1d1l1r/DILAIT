@@ -50,6 +50,7 @@ const els = {
   content: document.getElementById("screen-content"),
   toast: document.getElementById("toast"),
   dockButtons: [...document.querySelectorAll("[data-add-screen]")],
+  localeButtons: [...document.querySelectorAll("[data-locale]")],
 };
 
 const state = {
@@ -64,11 +65,71 @@ const state = {
   discovery: null,
   selectedCandidate: null,
   timezones: [],
+  locale: window.localStorage.getItem("lights-hub-locale") || "ru",
   screen: { name: "home", params: {} },
   history: [],
   refreshTimer: null,
   toastTimer: null,
 };
+
+const CHROME_COPY = {
+  ru: {
+    refresh: "Обновить",
+    refreshing: "Обновление...",
+    back: "Назад",
+    advanced: "Advanced",
+    kicker: "Локальный свет",
+    subtitle: "Управление светом по комнатам на каждый день.",
+    footerLabel: "Язык",
+    dock: {
+      "add-room": "Комната+",
+      "add-device": "Свет+",
+      "add-group": "Группа+",
+      "add-scene": "Сцена+",
+      "add-schedule": "Правило+",
+      "add-link": "Ссылка+",
+    },
+  },
+  en: {
+    refresh: "Refresh",
+    refreshing: "Refreshing...",
+    back: "Back",
+    advanced: "Advanced",
+    kicker: "Local lights",
+    subtitle: "Rooms first control for everyday use.",
+    footerLabel: "Language",
+    dock: {
+      "add-room": "Room+",
+      "add-device": "Light+",
+      "add-group": "Group+",
+      "add-scene": "Scene+",
+      "add-schedule": "Rule+",
+      "add-link": "Link+",
+    },
+  },
+};
+
+function chromeCopy() {
+  return CHROME_COPY[state.locale] || CHROME_COPY.ru;
+}
+
+function applyChromeCopy() {
+  const copy = chromeCopy();
+  document.documentElement.lang = state.locale;
+  document.title = "Lights Hub";
+  els.pageKicker.textContent = copy.kicker;
+  els.pageSubtitle.textContent = copy.subtitle;
+  els.refreshButton.textContent = copy.refresh;
+  els.backButton.textContent = copy.back;
+  document.querySelector(".footer-label").textContent = copy.footerLabel;
+  document.querySelector(".footer-link").textContent = copy.advanced;
+  els.dockButtons.forEach((button) => {
+    button.textContent = copy.dock[button.dataset.addScreen] || button.textContent;
+  });
+  els.localeButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.locale === state.locale);
+  });
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, options);
@@ -577,10 +638,10 @@ async function refreshDiscovery() {
   const status = els.content.querySelector('[data-role="discovery-status"]');
   if (button) {
     button.disabled = true;
-    button.textContent = "Scanning...";
+    button.textContent = "Сканирование...";
   }
   if (status) {
-    status.textContent = "Scanning nearby supported lights. Windows BLE can take a few seconds.";
+    status.textContent = "Идёт поиск ближайших поддерживаемых ламп. На Windows BLE-сканирование может занять несколько секунд.";
   }
   const startedAt = performance.now();
   try {
@@ -588,19 +649,19 @@ async function refreshDiscovery() {
     const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
     const groups = discoveryGroups();
     if (status) {
-      status.textContent = `Scan complete in ${elapsed}s. ${groups.supported.length} new supported light(s) are ready to add.`;
+      status.textContent = `Сканирование завершено за ${elapsed} c. Новых поддерживаемых ламп: ${groups.supported.length}.`;
     }
     renderScreen();
   } catch (error) {
     console.error(error);
     if (status) {
-      status.textContent = `Discovery failed: ${error.message}`;
+      status.textContent = `Ошибка поиска: ${error.message}`;
     }
     showToast(error.message, "error");
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = "Scan for lights";
+      button.textContent = "Искать лампы";
     }
   }
 }
@@ -609,7 +670,7 @@ async function refreshAll({ silent = false } = {}) {
   try {
     if (!silent) {
       els.refreshButton.disabled = true;
-      els.refreshButton.textContent = "Refreshing...";
+      els.refreshButton.textContent = chromeCopy().refreshing;
     }
     const [system, dashboard, rooms, devices, groups, scenes, rules, actionLinks] = await Promise.all([
       api("/api/system/info"),
@@ -635,11 +696,11 @@ async function refreshAll({ silent = false } = {}) {
     }
     renderScreen();
     if (!silent) {
-      showToast("Updated");
+      showToast("Обновлено");
     }
   } finally {
     els.refreshButton.disabled = false;
-    els.refreshButton.textContent = "Refresh";
+    els.refreshButton.textContent = chromeCopy().refresh;
   }
 }
 
@@ -660,28 +721,28 @@ function roomCardMarkup(room) {
     <article class="room-card clickable" data-room-card="${room.id}" style="${roomTintStyle(room.id)}">
       <div class="card-head">
         <div>
-          <p class="section-kicker">${activeCount ? "Active room" : "Room"}</p>
+          <p class="section-kicker">${activeCount ? "Активная комната" : "Комната"}</p>
           <h3>${escapeHtml(room.name)}</h3>
           <div class="meta-row">
-            <span class="meta-pill">${devices.length} light(s)</span>
-            <span class="meta-pill">${activeCount} on</span>
+            <span class="meta-pill">${devices.length} свет</span>
+            <span class="meta-pill">${activeCount} включено</span>
           </div>
         </div>
-        <button class="pill-button" type="button" data-open-room="${room.id}">Open</button>
+        <button class="pill-button" type="button" data-open-room="${room.id}">Открыть</button>
       </div>
       <div class="quick-grid">
-        <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">Room on</button>
-        <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">Room off</button>
+        <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">Включить</button>
+        <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">Выключить</button>
         <label class="field">
-          <span>Brightness</span>
+          <span>Яркость</span>
           <input type="range" min="0" max="100" value="70" data-room-brightness="${room.id}" />
         </label>
-        <button class="soft-button" type="button" data-room-action="${room.id}" data-action-name="brightness">Apply</button>
+        <button class="soft-button" type="button" data-room-action="${room.id}" data-action-name="brightness">Применить</button>
         <label class="field">
-          <span>Color</span>
+          <span>Цвет</span>
           <input type="color" value="#6de9ff" data-room-color="${room.id}" />
         </label>
-        <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="color">Tint room</button>
+        <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="color">Покрасить</button>
       </div>
     </article>
   `;
@@ -697,25 +758,25 @@ function deviceCardMarkup(device) {
           <h3>${escapeHtml(device.name)}</h3>
           <div class="pill-row">
             <span class="family-pill">${escapeHtml(device.family)}</span>
-            <span class="status-pill ${current.is_on ? "good" : "warn"}">${current.is_on ? "On" : "Off"}</span>
+            <span class="status-pill ${current.is_on ? "good" : "warn"}">${current.is_on ? "Вкл" : "Выкл"}</span>
           </div>
         </div>
         <div class="inline-actions">
-          <button class="pill-button" type="button" data-open-device="${device.id}">Open</button>
-          <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? "Off" : "On"}</button>
+          <button class="pill-button" type="button" data-open-device="${device.id}">Открыть</button>
+          <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? "Выключить" : "Включить"}</button>
         </div>
       </div>
       <div class="quick-grid">
         <label class="field">
-          <span>Brightness</span>
+          <span>Яркость</span>
           <input type="range" min="0" max="100" value="${Number(current.brightness ?? 100)}" data-device-brightness="${device.id}" />
         </label>
-        <button class="soft-button" type="button" data-device-action="${device.id}" data-action-name="brightness">Apply</button>
+        <button class="soft-button" type="button" data-device-action="${device.id}" data-action-name="brightness">Применить</button>
         <label class="field">
-          <span>Color</span>
+          <span>Цвет</span>
           <input type="color" value="${rgbToHex(current.rgb)}" data-device-color="${device.id}" />
         </label>
-        <button class="ghost-button" type="button" data-device-action="${device.id}" data-action-name="color">Apply</button>
+        <button class="ghost-button" type="button" data-device-action="${device.id}" data-action-name="color">Применить</button>
       </div>
     </article>
   `;
@@ -818,62 +879,46 @@ function renderHomeScreen() {
   const roomsPreview = state.rooms.slice(0, 4);
   const unassignedCount = state.devices.filter((device) => device.room_id == null).length;
   setHeader({
-    kicker: "Everyday control",
+    kicker: "Главная",
     title: "Lights Hub",
-    subtitle: "Pick a section, then drill into rooms, devices, scenes, schedules, and links without the admin clutter.",
+    subtitle: "Выбирай раздел, проваливайся внутрь и возвращайся назад без длинной прокрутки.",
     canBack: false,
   });
   setContent(`
     <div class="screen-stack">
-      <section class="screen-card hero-card">
-        <div class="hero-grid">
-          <div>
-            <p class="topbar-kicker">Home</p>
-            <h3>Rooms first. Fast control. Clean paths.</h3>
-            <p class="body-copy">Use the cards below to move through what already exists. The dock at the bottom is only for adding something new.</p>
-          </div>
-          <div class="pill-row">
-            <span class="meta-pill">${state.dashboard?.devices_total || 0} lights</span>
-            <span class="meta-pill">${state.dashboard?.groups_total || 0} groups</span>
-            <span class="meta-pill">${state.dashboard?.scenes_total || 0} scenes</span>
-            <span class="meta-pill">${state.dashboard?.enabled_rules_total || 0} active rules</span>
-          </div>
-        </div>
-      </section>
-
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Overview</p>
-            <h2>Jump to a section</h2>
+            <p class="section-kicker">Обзор</p>
+            <h2>Разделы</h2>
           </div>
         </div>
         <div class="overview-grid">
-          ${overviewCardMarkup("rooms", "Rooms", state.rooms.length, `${state.rooms.length ? "Open a room or build one" : "Start by adding a room"}`)}
-          ${overviewCardMarkup("devices", "Devices", state.devices.length, `${state.devices.filter((device) => deviceState(device).is_on).length} currently on`)}
-          ${overviewCardMarkup("groups", "Groups", state.groups.length, "Mixed family control")}
-          ${overviewCardMarkup("scenes", "Scenes", state.scenes.length, "Reusable presets")}
-          ${overviewCardMarkup("schedules", "Schedules", state.rules.length, "Delay, once, recurring, astronomical")}
-          ${overviewCardMarkup("links", "Links", state.actionLinks.length, "Local shortcuts and NFC ready URLs")}
+          ${overviewCardMarkup("rooms", "Комнаты", state.rooms.length, `${state.rooms.length ? "Открыть комнату или создать новую" : "Начни с первой комнаты"}`)}
+          ${overviewCardMarkup("devices", "Устройства", state.devices.length, `${state.devices.filter((device) => deviceState(device).is_on).length} сейчас включено`)}
+          ${overviewCardMarkup("groups", "Группы", state.groups.length, "Смешанное управление разными семействами")}
+          ${overviewCardMarkup("scenes", "Сцены", state.scenes.length, "Сохранённые пресеты")}
+          ${overviewCardMarkup("schedules", "Расписания", state.rules.length, "Задержка, разово, повтор, астрономия")}
+          ${overviewCardMarkup("links", "Ссылки", state.actionLinks.length, "Локальные шорткаты и NFC-ready URL")}
         </div>
       </section>
 
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Rooms</p>
-            <h2>Quick room access</h2>
+            <p class="section-kicker">Комнаты</p>
+            <h2>Быстрый доступ</h2>
           </div>
-          <button class="pill-button" type="button" data-open-screen="rooms">All rooms</button>
+          <button class="pill-button" type="button" data-open-screen="rooms">Все комнаты</button>
         </div>
         ${
           roomsPreview.length
             ? `<div class="room-grid">${roomsPreview.map((room) => roomCardMarkup(room)).join("")}</div>`
-            : '<div class="empty-state">No rooms yet. Use Room+ in the dock to build your first one.</div>'
+            : '<div class="empty-state">Комнат пока нет. Добавь первую через нижнюю панель.</div>'
         }
         ${
           unassignedCount
-            ? `<div class="details-panel"><div class="card-head"><div><p class="section-kicker">Needs sorting</p><h3>Unassigned lights</h3><p class="body-copy">${unassignedCount} light(s) do not belong to a room yet.</p></div><button class="pill-button" type="button" data-open-screen="devices-unassigned">Fix now</button></div></div>`
+            ? `<div class="details-panel"><div class="card-head"><div><p class="section-kicker">Нужно разложить</p><h3>Свет без комнаты</h3><p class="body-copy">${unassignedCount} устройству(ам) ещё не назначена комната.</p></div><button class="pill-button" type="button" data-open-screen="devices-unassigned">Разобрать</button></div></div>`
             : ""
         }
       </section>
@@ -885,22 +930,22 @@ function renderHomeScreen() {
 
 function renderRoomsScreen() {
   setHeader({
-    kicker: "Rooms",
-    title: "All rooms",
-    subtitle: "Open a room to control its lights, groups, and scenes without hunting through a long page.",
+    kicker: "Комнаты",
+    title: "Все комнаты",
+    subtitle: "Открывай комнату и управляй светом, группами и сценами без длинной прокрутки.",
   });
   const unassignedCount = state.devices.filter((device) => device.room_id == null).length;
   setContent(`
     <div class="screen-stack">
       ${
         unassignedCount
-          ? `<section class="details-panel"><div class="card-head"><div><p class="section-kicker">Unassigned</p><h3>Lights without a room</h3><p class="body-copy">${unassignedCount} light(s) still need a room.</p></div><button class="primary-button" type="button" data-open-screen="devices-unassigned">Assign now</button></div></section>`
+          ? `<section class="details-panel"><div class="card-head"><div><p class="section-kicker">Без комнаты</p><h3>Есть неразобранный свет</h3><p class="body-copy">${unassignedCount} устройству(ам) всё ещё нужна комната.</p></div><button class="primary-button" type="button" data-open-screen="devices-unassigned">Назначить</button></div></section>`
           : ""
       }
       ${
         state.rooms.length
           ? `<div class="room-grid">${state.rooms.map((room) => roomCardMarkup(room)).join("")}</div>`
-          : '<div class="empty-state">No rooms yet. Use Room+ below to create one.</div>'
+          : '<div class="empty-state">Комнат пока нет. Создай первую через нижнюю панель.</div>'
       }
     </div>
   `);
@@ -918,64 +963,64 @@ function renderRoomDetailScreen(roomId) {
   const groups = state.groups.filter((group) => group.room_id === room.id);
   const scenes = state.scenes.filter((scene) => scene.room_id === room.id);
   setHeader({
-    kicker: "Room",
+    kicker: "Комната",
     title: room.name,
-    subtitle: `${devices.length} light(s), ${groups.length} group(s), ${scenes.length} scene(s).`,
+    subtitle: `${devices.length} свет, ${groups.length} группа(ы), ${scenes.length} сцена(ы).`,
   });
   setContent(`
     <div class="screen-stack">
       <section class="room-card" style="${roomTintStyle(room.id)}">
         <div class="detail-header">
           <div>
-            <p class="section-kicker">Quick control</p>
+            <p class="section-kicker">Быстрое управление</p>
             <h3>${escapeHtml(room.name)}</h3>
             <div class="pill-row">
-              <span class="meta-pill">${devices.length} light(s)</span>
-              <span class="meta-pill">${devices.filter((device) => deviceState(device).is_on).length} on</span>
+              <span class="meta-pill">${devices.length} свет</span>
+              <span class="meta-pill">${devices.filter((device) => deviceState(device).is_on).length} включено</span>
             </div>
           </div>
           <div class="inline-actions">
-            <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">Room on</button>
-            <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">Room off</button>
+            <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">Включить</button>
+            <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">Выключить</button>
           </div>
         </div>
         <div class="quick-grid">
           <label class="field">
-            <span>Brightness</span>
+            <span>Яркость</span>
             <input type="range" min="0" max="100" value="70" data-room-brightness="${room.id}" />
           </label>
-          <button class="soft-button" type="button" data-room-action="${room.id}" data-action-name="brightness">Apply</button>
+          <button class="soft-button" type="button" data-room-action="${room.id}" data-action-name="brightness">Применить</button>
           <label class="field">
-            <span>Color</span>
+            <span>Цвет</span>
             <input type="color" value="#6de9ff" data-room-color="${room.id}" />
           </label>
-          <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="color">Tint room</button>
+          <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="color">Покрасить</button>
         </div>
       </section>
 
       <section class="form-card">
         <div class="section-head compact">
           <div>
-            <p class="section-kicker">Settings</p>
-            <h3>Edit room</h3>
+            <p class="section-kicker">Настройки</p>
+            <h3>Изменить комнату</h3>
           </div>
         </div>
         <form id="room-edit-form" class="form-stack">
           <div class="field-grid">
             <label class="field">
-              <span>Name</span>
+              <span>Название</span>
               <input name="name" value="${escapeHtml(room.name)}" required />
             </label>
             <label class="field">
-              <span>Sort order</span>
+              <span>Порядок</span>
               <input name="sort_order" type="number" value="${room.sort_order}" />
             </label>
           </div>
           <div class="inline-actions">
-            <button class="primary-button" type="submit">Save room</button>
-            <button class="danger-button" type="button" id="room-delete-button">Delete room</button>
-            <button class="soft-button" type="button" data-open-screen="add-group" data-room-id="${room.id}">New group here</button>
-            <button class="soft-button" type="button" data-open-screen="add-scene" data-room-id="${room.id}">New scene here</button>
+            <button class="primary-button" type="submit">Сохранить</button>
+            <button class="danger-button" type="button" id="room-delete-button">Удалить комнату</button>
+            <button class="soft-button" type="button" data-open-screen="add-group" data-room-id="${room.id}">Новая группа</button>
+            <button class="soft-button" type="button" data-open-screen="add-scene" data-room-id="${room.id}">Новая сцена</button>
           </div>
         </form>
       </section>
@@ -983,10 +1028,10 @@ function renderRoomDetailScreen(roomId) {
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Lights</p>
-            <h2>${devices.length ? "In this room" : "No lights yet"}</h2>
+            <p class="section-kicker">Свет</p>
+            <h2>${devices.length ? "В этой комнате" : "Света пока нет"}</h2>
           </div>
-          <button class="pill-button" type="button" data-open-screen="devices-room" data-room-id="${room.id}">Open list</button>
+          <button class="pill-button" type="button" data-open-screen="devices-room" data-room-id="${room.id}">Открыть список</button>
         </div>
         ${
           devices.length
@@ -999,15 +1044,15 @@ function renderRoomDetailScreen(roomId) {
                           <strong>${escapeHtml(device.name)}</strong>
                           <div class="pill-row">
                             <span class="family-pill">${escapeHtml(device.family)}</span>
-                            <span class="status-pill ${deviceState(device).is_on ? "good" : "warn"}">${deviceState(device).is_on ? "On" : "Off"}</span>
+                            <span class="status-pill ${deviceState(device).is_on ? "good" : "warn"}">${deviceState(device).is_on ? "Вкл" : "Выкл"}</span>
                           </div>
                         </div>
-                        <button class="pill-button" type="button" data-open-device="${device.id}">Open</button>
+                        <button class="pill-button" type="button" data-open-device="${device.id}">Открыть</button>
                       </div>
                     </article>`,
                 )
                 .join("")}</div>`
-            : '<div class="empty-state">No lights in this room yet.</div>'
+            : '<div class="empty-state">В этой комнате пока нет света.</div>'
         }
       </section>
 
@@ -1099,18 +1144,18 @@ function renderRoomDetailScreen(roomId) {
 
 function renderDevicesScreen({ roomId = null, onlyUnassigned = false } = {}) {
   let devices = state.devices;
-  let subtitle = "Daily control for each light.";
+  let subtitle = "Повседневное управление каждым светильником.";
   if (roomId != null) {
     devices = devices.filter((device) => device.room_id === roomId);
-    subtitle = `Only showing lights in ${roomLabel(roomId)}.`;
+    subtitle = `Показываю только свет из комнаты ${roomLabel(roomId)}.`;
   }
   if (onlyUnassigned) {
     devices = devices.filter((device) => device.room_id == null);
-    subtitle = "These lights need a room so they show up in the right place.";
+    subtitle = "Этому свету нужна комната, чтобы он оказался на своём месте.";
   }
   setHeader({
-    kicker: "Devices",
-    title: onlyUnassigned ? "Unassigned lights" : roomId != null ? roomLabel(roomId) : "All lights",
+    kicker: "Устройства",
+    title: onlyUnassigned ? "Свет без комнаты" : roomId != null ? roomLabel(roomId) : "Все устройства",
     subtitle,
   });
   setContent(`
@@ -1118,15 +1163,15 @@ function renderDevicesScreen({ roomId = null, onlyUnassigned = false } = {}) {
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Lights</p>
-            <h2>${devices.length ? "Choose a light" : "No lights yet"}</h2>
+            <p class="section-kicker">Свет</p>
+            <h2>${devices.length ? "Выбери устройство" : "Устройств пока нет"}</h2>
           </div>
-          <button class="primary-button" type="button" data-open-screen="add-device">Add light</button>
+          <button class="primary-button" type="button" data-open-screen="add-device">Добавить свет</button>
         </div>
         ${
           devices.length
             ? `<div class="list-grid">${devices.map((device) => deviceCardMarkup(device)).join("")}</div>`
-            : '<div class="empty-state">No lights match this view yet.</div>'
+            : '<div class="empty-state">В этом разделе пока ничего нет.</div>'
         }
       </section>
     </div>
@@ -1144,73 +1189,73 @@ function renderDeviceDetailScreen(deviceId) {
   const current = deviceState(device);
   const groupNames = state.groups.filter((group) => (group.devices || []).some((member) => member.id === device.id)).map((group) => group.name);
   setHeader({
-    kicker: "Light",
+    kicker: "Устройство",
     title: device.name,
-    subtitle: `${device.family} in ${roomLabel(device.room_id)}.`,
+    subtitle: `${device.family} в комнате ${roomLabel(device.room_id)}.`,
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="detail-header">
           <div>
-            <p class="section-kicker">Quick control</p>
+            <p class="section-kicker">Быстрое управление</p>
             <h3>${escapeHtml(device.name)}</h3>
             <div class="pill-row">
               <span class="family-pill">${escapeHtml(device.family)}</span>
-              <span class="status-pill ${current.is_on ? "good" : "warn"}">${current.is_on ? "On" : "Off"}</span>
+              <span class="status-pill ${current.is_on ? "good" : "warn"}">${current.is_on ? "Вкл" : "Выкл"}</span>
               <span class="meta-pill">${escapeHtml(roomLabel(device.room_id))}</span>
             </div>
           </div>
           <div class="inline-actions">
-            <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? "Turn off" : "Turn on"}</button>
+            <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? "Выключить" : "Включить"}</button>
           </div>
         </div>
         <div class="quick-grid">
           <label class="field">
-            <span>Brightness</span>
+            <span>Яркость</span>
             <input type="range" min="0" max="100" value="${Number(current.brightness ?? 100)}" data-device-brightness="${device.id}" />
           </label>
-          <button class="soft-button" type="button" data-device-action="${device.id}" data-action-name="brightness">Apply</button>
+          <button class="soft-button" type="button" data-device-action="${device.id}" data-action-name="brightness">Применить</button>
           <label class="field">
-            <span>Color</span>
+            <span>Цвет</span>
             <input type="color" value="${rgbToHex(current.rgb)}" data-device-color="${device.id}" />
           </label>
-          <button class="ghost-button" type="button" data-device-action="${device.id}" data-action-name="color">Apply</button>
+          <button class="ghost-button" type="button" data-device-action="${device.id}" data-action-name="color">Применить</button>
         </div>
       </section>
 
       <section class="form-card">
         <div class="section-head compact">
           <div>
-            <p class="section-kicker">Settings</p>
-            <h3>Update light</h3>
+            <p class="section-kicker">Настройки</p>
+            <h3>Изменить устройство</h3>
           </div>
         </div>
         <form id="device-edit-form" class="form-stack">
           <div class="field-grid">
             <label class="field">
-              <span>Name</span>
+              <span>Название</span>
               <input name="name" value="${escapeHtml(device.name)}" required />
             </label>
             <label class="field">
-              <span>Room</span>
-              <select name="room_id">${roomOptionsMarkup(device.room_id ?? "", { allowBlank: true, blankLabel: "No room" })}</select>
+              <span>Комната</span>
+              <select name="room_id">${roomOptionsMarkup(device.room_id ?? "", { allowBlank: true, blankLabel: "Без комнаты" })}</select>
             </label>
           </div>
           <label class="toggle-row">
             <input name="is_enabled" type="checkbox"${device.is_enabled ? " checked" : ""} />
-            <span>Keep this light enabled in the app</span>
+            <span>Оставить устройство активным в приложении</span>
           </label>
           ${
             groupNames.length
-              ? `<div class="details-panel"><p class="section-kicker">Groups</p><div class="pill-row">${groupNames
+              ? `<div class="details-panel"><p class="section-kicker">Группы</p><div class="pill-row">${groupNames
                   .map((name) => `<span class="meta-pill">${escapeHtml(name)}</span>`)
                   .join("")}</div></div>`
               : ""
           }
           <div class="inline-actions">
-            <button class="primary-button" type="submit">Save changes</button>
-            <button class="danger-button" type="button" id="device-delete-button">Delete light</button>
+            <button class="primary-button" type="submit">Сохранить</button>
+            <button class="danger-button" type="button" id="device-delete-button">Удалить устройство</button>
           </div>
         </form>
       </section>
@@ -2252,6 +2297,7 @@ function renderCurrentScreen() {
 }
 
 function renderScreen() {
+  applyChromeCopy();
   renderCurrentScreen();
 }
 
@@ -2650,6 +2696,15 @@ els.refreshButton.addEventListener("click", () =>
 
 els.dockButtons.forEach((button) => {
   button.addEventListener("click", () => openScreen(button.dataset.addScreen));
+});
+
+els.localeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.locale = button.dataset.locale;
+    window.localStorage.setItem("lights-hub-locale", state.locale);
+    applyChromeCopy();
+    renderScreen();
+  });
 });
 
 refreshAll().catch((error) => {

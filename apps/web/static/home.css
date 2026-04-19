@@ -168,6 +168,7 @@ button {
   overflow: hidden;
   padding: 16px;
   text-align: left;
+  color: var(--text);
 }
 
 .overview-card strong {
@@ -530,12 +531,49 @@ input[type="range"] {
 
 .app-footer {
   margin-top: 14px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
 .footer-link {
   color: var(--muted);
   text-decoration: none;
+}
+
+.footer-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(9, 18, 33, 0.68);
+}
+
+.footer-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.footer-toggle {
+  min-width: 48px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 236, 255, 0.18);
+  background: rgba(12, 22, 39, 0.88);
+  color: var(--muted);
+}
+
+.footer-toggle.is-active {
+  color: #04101b;
+  background: linear-gradient(135deg, rgba(99, 236, 255, 0.98), rgba(156, 249, 126, 0.92));
+  border-color: transparent;
 }
 
 .empty-state {
