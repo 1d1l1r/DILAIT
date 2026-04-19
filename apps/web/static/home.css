@@ -81,16 +81,28 @@ button {
 
 .app-topbar {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "title nav refresh";
   align-items: center;
   gap: 12px;
   padding: 16px;
 }
 
 .topbar-nav {
-  display: inline-flex;
-  align-items: center;
+  grid-area: nav;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(84px, 1fr));
   gap: 8px;
+  min-width: 176px;
+}
+
+.title-block {
+  grid-area: title;
+  min-width: 0;
+}
+
+#refresh-button {
+  grid-area: refresh;
 }
 
 .topbar-kicker,
@@ -346,6 +358,11 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.control-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(136px, 164px);
+  align-items: start;
+}
+
 .list-card .card-head {
   align-items: flex-start;
 }
@@ -366,23 +383,22 @@ button {
   width: 100%;
 }
 
-.list-card .quick-grid {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-}
-
-.list-card .quick-grid .field {
+.list-card .quick-grid .field,
+.control-grid .field {
   min-width: 0;
 }
 
-.list-card .quick-grid > button {
+.list-card .quick-grid > button,
+.control-grid > button {
   width: 100%;
   min-width: 132px;
+  align-self: end;
 }
 
 .field {
   display: grid;
   gap: 6px;
+  align-content: start;
 }
 
 .field span,
@@ -393,6 +409,10 @@ button {
   font-size: 0.84rem;
   line-height: 1.35;
   min-height: 1.2rem;
+}
+
+.control-grid .field span {
+  margin-bottom: 2px;
 }
 
 input,
@@ -473,6 +493,11 @@ input[type="range"] {
 
 .ghost-button {
   color: var(--muted);
+}
+
+.topbar-nav .icon-button.is-inert {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .primary-button:hover,
@@ -701,12 +726,6 @@ input[type="range"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .room-card .quick-grid,
-  .screen-card .quick-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(136px, 168px);
-    align-items: start;
-  }
-
   .room-card .inline-actions,
   .screen-card .inline-actions,
   .detail-card .inline-actions,
@@ -729,16 +748,14 @@ input[type="range"] {
   }
 
   .app-topbar {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "back title"
+      "title nav"
       "refresh refresh";
   }
 
-  .topbar-nav { grid-area: back; }
-
-  .title-block {
-    grid-area: title;
+  .topbar-nav {
+    min-width: 132px;
   }
 
   #refresh-button {
@@ -748,11 +765,15 @@ input[type="range"] {
 
   .hero-grid,
   .overview-grid,
-  .quick-grid,
   .field-grid,
   .room-grid,
   .list-grid,
   .two-up-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .control-grid,
+  .quick-grid {
     grid-template-columns: 1fr;
   }
 

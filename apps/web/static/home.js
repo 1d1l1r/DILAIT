@@ -276,8 +276,10 @@ function setHeader({ kicker, title, subtitle, canBack = true }) {
   els.pageTitle.textContent = title;
   els.pageSubtitle.textContent = subtitle || "";
   els.pageSubtitle.classList.toggle("is-hidden", !subtitle);
-  els.backButton.classList.toggle("is-hidden", !canBack);
-  els.homeButton.classList.toggle("is-hidden", !canBack);
+  els.backButton.classList.toggle("is-inert", !canBack);
+  els.homeButton.classList.toggle("is-inert", !canBack);
+  els.backButton.tabIndex = canBack ? 0 : -1;
+  els.homeButton.tabIndex = canBack ? 0 : -1;
 }
 
 function isAddScreen(name) {
@@ -862,7 +864,7 @@ function roomCardMarkup(room) {
         </div>
         <button class="pill-button" type="button" data-open-room="${room.id}">${lang("Открыть", "Open")}</button>
       </div>
-      <div class="quick-grid">
+      <div class="quick-grid control-grid">
         <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">${lang("Включить", "Turn on")}</button>
         <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">${lang("Выключить", "Turn off")}</button>
         <label class="field">
@@ -898,7 +900,7 @@ function deviceCardMarkup(device) {
           <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? lang("Выключить", "Turn off") : lang("Включить", "Turn on")}</button>
         </div>
       </div>
-      <div class="quick-grid">
+      <div class="quick-grid control-grid">
         <label class="field">
           <span>${lang("Яркость", "Brightness")}</span>
           <input type="range" min="0" max="100" value="${Number(current.brightness ?? 100)}" data-device-brightness="${device.id}" />
@@ -1119,7 +1121,7 @@ function renderRoomDetailScreen(roomId) {
             <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">${lang("Выключить", "Turn off")}</button>
           </div>
         </div>
-        <div class="quick-grid">
+        <div class="quick-grid control-grid">
           <label class="field">
             <span>${lang("Яркость", "Brightness")}</span>
             <input type="range" min="0" max="100" value="70" data-room-brightness="${room.id}" />
@@ -1345,7 +1347,7 @@ function renderDeviceDetailScreen(deviceId) {
             <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? lang("Выключить", "Turn off") : lang("Включить", "Turn on")}</button>
           </div>
         </div>
-        <div class="quick-grid">
+        <div class="quick-grid control-grid">
           <label class="field">
             <span>${lang("Яркость", "Brightness")}</span>
             <input type="range" min="0" max="100" value="${Number(current.brightness ?? 100)}" data-device-brightness="${device.id}" />
@@ -1484,7 +1486,7 @@ function renderGroupDetailScreen(groupId) {
             <button class="ghost-button" type="button" data-group-action="${group.id}" data-action-name="off">${lang("Выкл", "Off")}</button>
           </div>
         </div>
-        <div class="quick-grid">
+        <div class="quick-grid control-grid">
           <label class="field">
             <span>${lang("Яркость", "Brightness")}</span>
             <input type="range" min="0" max="100" value="70" data-group-brightness="${group.id}" />
