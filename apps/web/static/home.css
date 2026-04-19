@@ -87,6 +87,12 @@ button {
   padding: 16px;
 }
 
+.topbar-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .topbar-kicker,
 .section-kicker,
 .eyebrow {
@@ -115,6 +121,8 @@ button {
 .body-copy {
   margin: 6px 0 0;
   color: var(--muted);
+  overflow-wrap: anywhere;
+  line-height: 1.38;
 }
 
 .screen-frame {
@@ -183,6 +191,10 @@ button {
   color: var(--muted);
 }
 
+.overview-card span:empty {
+  display: none;
+}
+
 .overview-card::after {
   content: "";
   position: absolute;
@@ -237,6 +249,14 @@ button {
   gap: 12px;
 }
 
+.card-head > div,
+.detail-header > div,
+.section-head > div,
+.split-row > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .meta-row,
 .pill-row,
 .inline-actions,
@@ -258,6 +278,10 @@ button {
   background: rgba(99, 236, 255, 0.12);
   color: var(--text);
   font-size: 0.8rem;
+  max-width: 100%;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .family-pill {
@@ -291,6 +315,21 @@ button {
   margin-bottom: 10px;
 }
 
+.room-card .card-head {
+  margin-bottom: 14px;
+}
+
+.room-card h3,
+.list-card h3,
+.mini-card h3 {
+  margin: 2px 0 10px;
+  overflow-wrap: anywhere;
+}
+
+.room-card .meta-row {
+  margin-top: 8px;
+}
+
 .list-card,
 .mini-card {
   padding: 16px;
@@ -307,6 +346,40 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.list-card .card-head {
+  align-items: flex-start;
+}
+
+.list-card .inline-actions {
+  margin-left: auto;
+  justify-content: flex-end;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  display: grid;
+  grid-auto-flow: row;
+  justify-items: stretch;
+  min-width: 144px;
+}
+
+.list-card .inline-actions > * {
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+.list-card .quick-grid {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.list-card .quick-grid .field {
+  min-width: 0;
+}
+
+.list-card .quick-grid > button {
+  width: 100%;
+  min-width: 132px;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -315,8 +388,11 @@ button {
 .field span,
 .field label,
 .field small {
+  display: block;
   color: var(--muted);
   font-size: 0.84rem;
+  line-height: 1.35;
+  min-height: 1.2rem;
 }
 
 input,
@@ -520,10 +596,27 @@ input[type="range"] {
   background: rgba(5, 11, 22, 0.94);
 }
 
+.add-dock.is-home {
+  position: static;
+  margin-top: 10px;
+  padding: 8px;
+  gap: 6px;
+  background: rgba(5, 11, 22, 0.72);
+  border-color: rgba(99, 236, 255, 0.1);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14);
+}
+
 .dock-button {
   min-height: 48px;
   padding-inline: 10px;
   font-weight: 700;
+}
+
+.add-dock.is-home .dock-button {
+  min-height: 42px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  opacity: 0.9;
 }
 
 .dock-button.is-active {
@@ -607,6 +700,27 @@ input[type="range"] {
   .two-up-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .room-card .quick-grid,
+  .screen-card .quick-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(136px, 168px);
+    align-items: start;
+  }
+
+  .room-card .inline-actions,
+  .screen-card .inline-actions,
+  .detail-card .inline-actions,
+  .form-card .inline-actions {
+    justify-content: flex-end;
+    align-items: stretch;
+  }
+
+  .room-card .inline-actions > *,
+  .screen-card .inline-actions > *,
+  .detail-card .inline-actions > *,
+  .form-card .inline-actions > * {
+    min-width: 132px;
+  }
 }
 
 @media (max-width: 720px) {
@@ -621,9 +735,7 @@ input[type="range"] {
       "refresh refresh";
   }
 
-  #back-button {
-    grid-area: back;
-  }
+  .topbar-nav { grid-area: back; }
 
   .title-block {
     grid-area: title;
@@ -655,6 +767,16 @@ input[type="range"] {
 
   .inline-actions {
     flex-direction: column;
+  }
+
+  .room-card .card-head {
+    gap: 14px;
+  }
+
+  .room-card .card-head > button,
+  .room-card .inline-actions > *,
+  .room-card .meta-row > * {
+    flex: 0 0 auto;
   }
 
   .primary-button,

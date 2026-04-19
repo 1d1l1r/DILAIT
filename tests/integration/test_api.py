@@ -316,8 +316,8 @@ def test_ui_shell_routes_are_split():
 
     assert root.status_code == 200
     assert advanced.status_code == 200
-    assert "Управление светом по комнатам на каждый день." in root.text
-    assert "Lights Hub Panel" in advanced.text
+    assert "DILIAT" in root.text
+    assert "DILIAT Panel" in advanced.text
 
 
 def test_rule_can_be_retargeted_and_retyped():

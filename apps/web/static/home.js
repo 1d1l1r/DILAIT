@@ -46,6 +46,7 @@ const els = {
   pageTitle: document.getElementById("page-title"),
   pageSubtitle: document.getElementById("page-subtitle"),
   backButton: document.getElementById("back-button"),
+  homeButton: document.getElementById("home-button"),
   refreshButton: document.getElementById("refresh-button"),
   content: document.getElementById("screen-content"),
   toast: document.getElementById("toast"),
@@ -77,7 +78,8 @@ const CHROME_COPY = {
     refresh: "Обновить",
     refreshing: "Обновление...",
     back: "Назад",
-    advanced: "Advanced",
+    advanced: "Расширенный",
+    home: "Главная",
     kicker: "Локальный свет",
     subtitle: "Управление светом по комнатам на каждый день.",
     footerLabel: "Язык",
@@ -95,6 +97,7 @@ const CHROME_COPY = {
     refreshing: "Refreshing...",
     back: "Back",
     advanced: "Advanced",
+    home: "Home",
     kicker: "Local lights",
     subtitle: "Rooms first control for everyday use.",
     footerLabel: "Language",
@@ -113,15 +116,87 @@ function chromeCopy() {
   return CHROME_COPY[state.locale] || CHROME_COPY.ru;
 }
 
+function lang(ru, en) {
+  return state.locale === "en" ? en : ru;
+}
+
+function pluralRu(count, one, few, many) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+function lightsLabel(count) {
+  return lang(`${count} ${pluralRu(count, "свет", "света", "света")}`, `${count} light(s)`);
+}
+
+function activeLabel(count) {
+  return lang(`${count} вкл.`, `${count} on`);
+}
+
+function membersLabel(count) {
+  return lang(`${count} ${pluralRu(count, "участник", "участника", "участников")}`, `${count} member(s)`);
+}
+
+function actionsLabel(count) {
+  return lang(`${count} ${pluralRu(count, "действие", "действия", "действий")}`, `${count} action(s)`);
+}
+
+function countLabel(count, ruOne, ruFew, ruMany, enLabel) {
+  return lang(`${count} ${pluralRu(count, ruOne, ruFew, ruMany)}`, `${count} ${enLabel}(s)`);
+}
+
+function localizeDynamicText(text) {
+  const lightsRuMatch = text.match(/^(\d+)\s+свет(?:а)?$/);
+  if (lightsRuMatch) return lightsLabel(Number(lightsRuMatch[1]));
+
+  const activeRuMatch = text.match(/^(\d+)\s+вкл\.$/);
+  if (activeRuMatch) return activeLabel(Number(activeRuMatch[1]));
+
+  const memberRuMatch = text.match(/^(\d+)\s+участник(?:а|ов)?$/);
+  if (memberRuMatch) return membersLabel(Number(memberRuMatch[1]));
+
+  const actionRuMatch = text.match(/^(\d+)\s+действи(?:е|я|й)$/);
+  if (actionRuMatch) return actionsLabel(Number(actionRuMatch[1]));
+
+  const memberMatch = text.match(/^(\d+)\s+member\(s\)$/);
+  if (memberMatch) return membersLabel(Number(memberMatch[1]));
+
+  const actionMatch = text.match(/^(\d+)\s+action\(s\)$/);
+  if (actionMatch) return actionsLabel(Number(actionMatch[1]));
+
+  const groupMatch = text.match(/^(\d+)\s+member\(s\)\s+across\s+(\d+)\s+family group\(s\)\.$/);
+  if (groupMatch) {
+    const members = Number(groupMatch[1]);
+    const families = Number(groupMatch[2]);
+    return lang(
+      `${membersLabel(members)}, ${families} ${pluralRu(families, "семейство", "семейства", "семейств")}.`,
+      `${members} member(s) across ${families} family group(s).`,
+    );
+  }
+
+  const sceneReadyMatch = text.match(/^(\d+)\s+action\(s\)\s+ready to run\.$/);
+  if (sceneReadyMatch) {
+    const actions = Number(sceneReadyMatch[1]);
+    return lang(`${actionsLabel(actions)} готовы к запуску.`, `${actions} action(s) ready to run.`);
+  }
+
+  return null;
+}
+
 function applyChromeCopy() {
   const copy = chromeCopy();
   document.documentElement.lang = state.locale;
-  document.title = "Lights Hub";
+  document.title = "DILIAT";
+  document.querySelector(".footer-link").textContent = copy.advanced;
   els.pageKicker.textContent = copy.kicker;
-  els.pageSubtitle.textContent = copy.subtitle;
   els.refreshButton.textContent = copy.refresh;
   els.backButton.textContent = copy.back;
-  document.querySelector(".footer-link").textContent = copy.advanced;
+  els.homeButton.textContent = copy.home;
+  els.backButton.setAttribute("aria-label", copy.back);
+  els.homeButton.setAttribute("aria-label", copy.home);
   els.dockButtons.forEach((button) => {
     button.textContent = copy.dock[button.dataset.addScreen] || button.textContent;
   });
@@ -190,11 +265,19 @@ function goBack() {
   renderScreen();
 }
 
+function goHome() {
+  state.history = [];
+  state.screen = { name: "home", params: {} };
+  renderScreen();
+}
+
 function setHeader({ kicker, title, subtitle, canBack = true }) {
   els.pageKicker.textContent = kicker;
   els.pageTitle.textContent = title;
-  els.pageSubtitle.textContent = subtitle;
+  els.pageSubtitle.textContent = subtitle || "";
+  els.pageSubtitle.classList.toggle("is-hidden", !subtitle);
   els.backButton.classList.toggle("is-hidden", !canBack);
+  els.homeButton.classList.toggle("is-hidden", !canBack);
 }
 
 function isAddScreen(name) {
@@ -202,6 +285,8 @@ function isAddScreen(name) {
 }
 
 function updateDockState() {
+  const dock = document.querySelector(".add-dock");
+  dock?.classList.toggle("is-home", currentScreen().name === "home");
   els.dockButtons.forEach((button) => {
     button.classList.toggle("is-active", currentScreen().name === button.dataset.addScreen);
   });
@@ -227,7 +312,7 @@ function enqueueRefresh(delayMs = 180) {
 }
 
 function formatDateTime(value) {
-  if (!value) return "Not scheduled";
+  if (!value) return lang("Не запланировано", "Not scheduled");
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(undefined, {
@@ -247,7 +332,7 @@ function roomById(roomId) {
 }
 
 function roomLabel(roomId) {
-  return roomById(roomId)?.name || "No room";
+  return roomById(roomId)?.name || lang("Без комнаты", "No room");
 }
 
 function groupById(groupId) {
@@ -263,9 +348,9 @@ function deviceById(deviceId) {
 }
 
 function targetLabel(targetType, targetId) {
-  if (targetType === "group") return groupById(targetId)?.name || "Group";
-  if (targetType === "scene") return sceneById(targetId)?.name || "Scene";
-  return deviceById(targetId)?.name || "Device";
+  if (targetType === "group") return groupById(targetId)?.name || lang("Группа", "Group");
+  if (targetType === "scene") return sceneById(targetId)?.name || lang("Сцена", "Scene");
+  return deviceById(targetId)?.name || lang("Устройство", "Device");
 }
 
 function targetOptionsFor(type) {
@@ -294,7 +379,7 @@ function roomOptionsMarkup(selected = "", { allowBlank = true, blankLabel = "No 
 function targetOptionsMarkup(type, selected = "") {
   const options = targetOptionsFor(type);
   if (!options.length) {
-    return '<option value="">Nothing available</option>';
+    return `<option value="">${escapeHtml(lang("Пока пусто", "Nothing available"))}</option>`;
   }
   return options
     .map(
@@ -307,21 +392,57 @@ function targetOptionsMarkup(type, selected = "") {
 function linkActionOptionsMarkup(targetType, selected = "on") {
   const options = targetType === "scene" ? ["run_scene"] : ["on", "off", "toggle"];
   return options
-    .map((option) => `<option value="${option}"${option === selected ? " selected" : ""}>${option}</option>`)
+    .map(
+      (option) =>
+        `<option value="${option}"${option === selected ? " selected" : ""}>${escapeHtml(actionTypeLabel(option))}</option>`,
+    )
     .join("");
 }
 
 function sceneActionOptionsMarkup(selected = "on") {
   return ["on", "off", "brightness", "color"]
-    .map((option) => `<option value="${option}"${option === selected ? " selected" : ""}>${option}</option>`)
+    .map(
+      (option) =>
+        `<option value="${option}"${option === selected ? " selected" : ""}>${escapeHtml(actionTypeLabel(option))}</option>`,
+    )
     .join("");
 }
 
 function scheduleActionOptionsMarkup(targetType, selected = "on") {
   const options = targetType === "scene" ? ["run_scene"] : ["on", "off", "toggle", "brightness", "color"];
   return options
-    .map((option) => `<option value="${option}"${option === selected ? " selected" : ""}>${option}</option>`)
+    .map(
+      (option) =>
+        `<option value="${option}"${option === selected ? " selected" : ""}>${escapeHtml(actionTypeLabel(option))}</option>`,
+    )
     .join("");
+}
+
+function actionTypeLabel(action) {
+  return {
+    on: lang("Включить", "Turn on"),
+    off: lang("Выключить", "Turn off"),
+    toggle: lang("Переключить", "Toggle"),
+    brightness: lang("Яркость", "Brightness"),
+    color: lang("Цвет", "Color"),
+    run_scene: lang("Запустить сцену", "Run scene"),
+  }[action] || action;
+}
+
+function ruleTypeLabel(type) {
+  return {
+    delay: lang("Задержка", "Delay"),
+    once: lang("Один раз", "Once"),
+    recurring: lang("Повтор", "Recurring"),
+    astronomical: lang("Астрономическое", "Astronomical"),
+  }[type] || type;
+}
+
+function solarEventLabel(type) {
+  return {
+    sunset: lang("Закат", "Sunset"),
+    sunrise: lang("Рассвет", "Sunrise"),
+  }[type] || type;
 }
 
 function timezoneOffsetLabel(timeZone) {
@@ -401,11 +522,11 @@ function roomTintStyle(roomId) {
 }
 
 function describeDays(mask) {
-  if (mask === 127) return "Every day";
+  if (mask === 127) return lang("Каждый день", "Every day");
   const weekdays = DAY_BITS.mon | DAY_BITS.tue | DAY_BITS.wed | DAY_BITS.thu | DAY_BITS.fri;
   const weekends = DAY_BITS.sat | DAY_BITS.sun;
-  if (mask === weekdays) return "Weekdays";
-  if (mask === weekends) return "Weekends";
+  if (mask === weekdays) return lang("Будни", "Weekdays");
+  if (mask === weekends) return lang("Выходные", "Weekends");
   return DAY_ORDER.filter((day) => (mask & DAY_BITS[day]) > 0)
     .map((day) => DAY_LABELS[day])
     .join(", ");
@@ -413,20 +534,26 @@ function describeDays(mask) {
 
 function describeRule(rule) {
   const payload = rule.payload_json || {};
-  const action = payload.action || "run";
+  const action = actionTypeLabel(payload.action || "run_scene");
   if (rule.rule_type === "delay") {
-    return `After ${payload.delay_seconds || 0}s -> ${action}`;
+    return lang(`Через ${payload.delay_seconds || 0} c -> ${action}`, `After ${payload.delay_seconds || 0}s -> ${action}`);
   }
   if (rule.rule_type === "once") {
     return `${formatDateTime(payload.run_at)} -> ${action}`;
   }
   if (rule.rule_type === "recurring") {
-    return `${describeDays(rule.days_of_week_mask)} at ${(payload.time || "--:--").slice(0, 5)} -> ${action}`;
+    return lang(
+      `${describeDays(rule.days_of_week_mask)} в ${(payload.time || "--:--").slice(0, 5)} -> ${action}`,
+      `${describeDays(rule.days_of_week_mask)} at ${(payload.time || "--:--").slice(0, 5)} -> ${action}`,
+    );
   }
   if (rule.rule_type === "astronomical") {
-    return `${describeDays(rule.days_of_week_mask)} ${payload.solar_event || "sunset"} (${payload.offset_minutes || 0} min) -> ${action}`;
+    return lang(
+      `${describeDays(rule.days_of_week_mask)} ${solarEventLabel(payload.solar_event || "sunset")} (${payload.offset_minutes || 0} мин) -> ${action}`,
+      `${describeDays(rule.days_of_week_mask)} ${payload.solar_event || "sunset"} (${payload.offset_minutes || 0} min) -> ${action}`,
+    );
   }
-  return `${rule.rule_type} -> ${action}`;
+  return `${ruleTypeLabel(rule.rule_type)} -> ${action}`;
 }
 
 function ruleDayMode(mask) {
@@ -445,7 +572,7 @@ function computeDaysMaskFromForm(form) {
   if (mode === "weekends") return DAY_BITS.sat | DAY_BITS.sun;
   const selected = [...form.querySelectorAll('input[name="custom_day"]:checked')].map((input) => input.value);
   const mask = selected.reduce((total, day) => total + DAY_BITS[day], 0);
-  if (!mask) throw new Error("Choose at least one custom day.");
+  if (!mask) throw new Error(lang("Выбери хотя бы один день.", "Choose at least one custom day."));
   return mask;
 }
 
@@ -561,7 +688,7 @@ async function handleDeviceAction(deviceId, actionName, payload = null) {
 async function runRoomAction(roomId, actionName, payload = null) {
   const devices = relevantRoomDevices(roomId);
   if (!devices.length) {
-    showToast("This room has no lights yet.");
+      showToast(lang("В этой комнате пока нет света.", "This room has no lights yet."));
     return;
   }
   const results = await Promise.allSettled(
@@ -585,7 +712,13 @@ async function runRoomAction(roomId, actionName, payload = null) {
   enqueueRefresh();
   const failureCount = results.filter((result) => result.status === "rejected").length;
   if (failureCount) {
-    showToast(`${failureCount} room action(s) failed. See Advanced for details.`, "error");
+        showToast(
+          lang(
+          `${failureCount} действий комнаты с ошибкой. Подробности в расширенном разделе.`,
+          `${failureCount} room action(s) failed. See Advanced for details.`,
+          ),
+          "error",
+        );
   }
 }
 
@@ -695,7 +828,7 @@ async function refreshAll({ silent = false } = {}) {
     }
     renderScreen();
     if (!silent) {
-      showToast("Обновлено");
+    showToast(lang("Обновлено", "Refreshed"));
     }
   } finally {
     els.refreshButton.disabled = false;
@@ -708,7 +841,7 @@ function overviewCardMarkup(kind, label, value, note) {
     <button class="overview-card" data-open-screen="${kind}" type="button">
       <p class="section-kicker">${escapeHtml(label)}</p>
       <strong>${escapeHtml(value)}</strong>
-      <span>${escapeHtml(note)}</span>
+      <span>${note ? escapeHtml(note) : ""}</span>
     </button>
   `;
 }
@@ -720,28 +853,28 @@ function roomCardMarkup(room) {
     <article class="room-card clickable" data-room-card="${room.id}" style="${roomTintStyle(room.id)}">
       <div class="card-head">
         <div>
-          <p class="section-kicker">${activeCount ? "Активная комната" : "Комната"}</p>
+          <p class="section-kicker">${activeCount ? lang("Активная комната", "Active room") : lang("Комната", "Room")}</p>
           <h3>${escapeHtml(room.name)}</h3>
           <div class="meta-row">
-            <span class="meta-pill">${devices.length} свет</span>
-            <span class="meta-pill">${activeCount} включено</span>
+            <span class="meta-pill">${lightsLabel(devices.length)}</span>
+            <span class="meta-pill">${activeLabel(activeCount)}</span>
           </div>
         </div>
-        <button class="pill-button" type="button" data-open-room="${room.id}">Открыть</button>
+        <button class="pill-button" type="button" data-open-room="${room.id}">${lang("Открыть", "Open")}</button>
       </div>
       <div class="quick-grid">
-        <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">Включить</button>
-        <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">Выключить</button>
+        <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">${lang("Включить", "Turn on")}</button>
+        <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">${lang("Выключить", "Turn off")}</button>
         <label class="field">
-          <span>Яркость</span>
+          <span>${lang("Яркость", "Brightness")}</span>
           <input type="range" min="0" max="100" value="70" data-room-brightness="${room.id}" />
         </label>
-        <button class="soft-button" type="button" data-room-action="${room.id}" data-action-name="brightness">Применить</button>
+        <button class="soft-button" type="button" data-room-action="${room.id}" data-action-name="brightness">${lang("Применить", "Apply")}</button>
         <label class="field">
-          <span>Цвет</span>
+          <span>${lang("Цвет", "Color")}</span>
           <input type="color" value="#6de9ff" data-room-color="${room.id}" />
         </label>
-        <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="color">Покрасить</button>
+        <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="color">${lang("Покрасить", "Tint")}</button>
       </div>
     </article>
   `;
@@ -757,25 +890,25 @@ function deviceCardMarkup(device) {
           <h3>${escapeHtml(device.name)}</h3>
           <div class="pill-row">
             <span class="family-pill">${escapeHtml(device.family)}</span>
-            <span class="status-pill ${current.is_on ? "good" : "warn"}">${current.is_on ? "Вкл" : "Выкл"}</span>
+            <span class="status-pill ${current.is_on ? "good" : "warn"}">${current.is_on ? lang("Вкл", "On") : lang("Выкл", "Off")}</span>
           </div>
         </div>
         <div class="inline-actions">
-          <button class="pill-button" type="button" data-open-device="${device.id}">Открыть</button>
-          <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? "Выключить" : "Включить"}</button>
+          <button class="pill-button" type="button" data-open-device="${device.id}">${lang("Открыть", "Open")}</button>
+          <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? lang("Выключить", "Turn off") : lang("Включить", "Turn on")}</button>
         </div>
       </div>
       <div class="quick-grid">
         <label class="field">
-          <span>Яркость</span>
+          <span>${lang("Яркость", "Brightness")}</span>
           <input type="range" min="0" max="100" value="${Number(current.brightness ?? 100)}" data-device-brightness="${device.id}" />
         </label>
-        <button class="soft-button" type="button" data-device-action="${device.id}" data-action-name="brightness">Применить</button>
+        <button class="soft-button" type="button" data-device-action="${device.id}" data-action-name="brightness">${lang("Применить", "Apply")}</button>
         <label class="field">
-          <span>Цвет</span>
+          <span>${lang("Цвет", "Color")}</span>
           <input type="color" value="${rgbToHex(current.rgb)}" data-device-color="${device.id}" />
         </label>
-        <button class="ghost-button" type="button" data-device-action="${device.id}" data-action-name="color">Применить</button>
+        <button class="ghost-button" type="button" data-device-action="${device.id}" data-action-name="color">${lang("Применить", "Apply")}</button>
       </div>
     </article>
   `;
@@ -794,14 +927,14 @@ function groupCardMarkup(group) {
           <p class="section-kicker">${escapeHtml(roomLabel(group.room_id))}</p>
           <h3>${escapeHtml(group.name)}</h3>
           <div class="pill-row">
-            <span class="meta-pill">${group.devices?.length || 0} member(s)</span>
-            <span class="family-pill">${escapeHtml(families.join(", ") || "Empty")}</span>
+            <span class="meta-pill">${membersLabel(group.devices?.length || 0)}</span>
+            <span class="family-pill">${escapeHtml(families.join(", ") || lang("Пусто", "Empty"))}</span>
           </div>
         </div>
         <div class="inline-actions">
-          <button class="pill-button" type="button" data-open-group="${group.id}">Open</button>
-          <button class="primary-button" type="button" data-group-action="${group.id}" data-action-name="on">On</button>
-          <button class="ghost-button" type="button" data-group-action="${group.id}" data-action-name="off">Off</button>
+          <button class="pill-button" type="button" data-open-group="${group.id}">${lang("Открыть", "Open")}</button>
+          <button class="primary-button" type="button" data-group-action="${group.id}" data-action-name="on">${lang("Вкл", "On")}</button>
+          <button class="ghost-button" type="button" data-group-action="${group.id}" data-action-name="off">${lang("Выкл", "Off")}</button>
         </div>
       </div>
     </article>
@@ -816,13 +949,13 @@ function sceneCardMarkup(scene) {
           <p class="section-kicker">${escapeHtml(roomLabel(scene.room_id))}</p>
           <h3>${escapeHtml(scene.name)}</h3>
           <div class="pill-row">
-            <span class="meta-pill">${scene.actions?.length || 0} action(s)</span>
-            <span class="status-pill ${scene.is_enabled ? "good" : "warn"}">${scene.is_enabled ? "Enabled" : "Disabled"}</span>
+            <span class="meta-pill">${actionsLabel(scene.actions?.length || 0)}</span>
+            <span class="status-pill ${scene.is_enabled ? "good" : "warn"}">${scene.is_enabled ? lang("Включена", "Enabled") : lang("Выключена", "Disabled")}</span>
           </div>
         </div>
         <div class="inline-actions">
-          <button class="pill-button" type="button" data-open-scene="${scene.id}">Open</button>
-          <button class="primary-button" type="button" data-run-scene="${scene.id}">Run</button>
+          <button class="pill-button" type="button" data-open-scene="${scene.id}">${lang("Открыть", "Open")}</button>
+          <button class="primary-button" type="button" data-run-scene="${scene.id}">${lang("Запустить", "Run")}</button>
         </div>
       </div>
     </article>
@@ -838,13 +971,13 @@ function ruleCardMarkup(rule) {
           <h3>${escapeHtml(rule.name)}</h3>
           <p class="body-copy">${escapeHtml(describeRule(rule))}</p>
           <div class="pill-row">
-            <span class="meta-pill">${escapeHtml(rule.rule_type)}</span>
+            <span class="meta-pill">${escapeHtml(ruleTypeLabel(rule.rule_type))}</span>
             <span class="meta-pill">${escapeHtml(formatDateTime(rule.next_run_at))}</span>
           </div>
         </div>
         <div class="inline-actions">
-          <button class="pill-button" type="button" data-open-rule="${rule.id}">Open</button>
-          <button class="soft-button" type="button" data-toggle-rule="${rule.id}">${rule.is_enabled ? "Disable" : "Enable"}</button>
+          <button class="pill-button" type="button" data-open-rule="${rule.id}">${lang("Открыть", "Open")}</button>
+          <button class="soft-button" type="button" data-toggle-rule="${rule.id}">${rule.is_enabled ? lang("Выключить", "Disable") : lang("Включить", "Enable")}</button>
         </div>
       </div>
     </article>
@@ -860,14 +993,14 @@ function linkCardMarkup(link) {
           <p class="section-kicker">${escapeHtml(targetLabel(link.target_type, link.target_id))}</p>
           <h3>${escapeHtml(link.name)}</h3>
           <div class="pill-row">
-            <span class="status-pill ${link.is_enabled ? "good" : "warn"}">${link.is_enabled ? "Enabled" : "Disabled"}</span>
-            <span class="meta-pill">${link.requires_confirmation ? "Confirm first" : "Instant"}</span>
-            <span class="meta-pill">${escapeHtml(link.action_type)}</span>
+            <span class="status-pill ${link.is_enabled ? "good" : "warn"}">${link.is_enabled ? lang("Включена", "Enabled") : lang("Выключена", "Disabled")}</span>
+            <span class="meta-pill">${link.requires_confirmation ? lang("Сначала подтверждение", "Confirm first") : lang("Сразу", "Instant")}</span>
+            <span class="meta-pill">${escapeHtml(actionTypeLabel(link.action_type))}</span>
           </div>
         </div>
         <div class="inline-actions">
-          <button class="pill-button" type="button" data-open-link="${link.id}">Open</button>
-          <a class="primary-button" href="${escapeHtml(href)}">${link.requires_confirmation ? "Review" : "Run"}</a>
+          <button class="pill-button" type="button" data-open-link="${link.id}">${lang("Открыть", "Open")}</button>
+          <a class="primary-button" href="${escapeHtml(href)}">${link.requires_confirmation ? lang("Проверить", "Review") : lang("Запустить", "Run")}</a>
         </div>
       </div>
     </article>
@@ -878,9 +1011,9 @@ function renderHomeScreen() {
   const roomsPreview = state.rooms.slice(0, 4);
   const unassignedCount = state.devices.filter((device) => device.room_id == null).length;
   setHeader({
-    kicker: "Главная",
-    title: "Lights Hub",
-    subtitle: "Выбирай раздел, проваливайся внутрь и возвращайся назад без длинной прокрутки.",
+    kicker: lang("Главная", "Home"),
+    title: "DILIAT",
+    subtitle: "",
     canBack: false,
   });
   setContent(`
@@ -893,12 +1026,12 @@ function renderHomeScreen() {
           </div>
         </div>
         <div class="overview-grid">
-          ${overviewCardMarkup("rooms", "Комнаты", state.rooms.length, `${state.rooms.length ? "Открыть комнату или создать новую" : "Начни с первой комнаты"}`)}
-          ${overviewCardMarkup("devices", "Устройства", state.devices.length, `${state.devices.filter((device) => deviceState(device).is_on).length} сейчас включено`)}
-          ${overviewCardMarkup("groups", "Группы", state.groups.length, "Смешанное управление разными семействами")}
-          ${overviewCardMarkup("scenes", "Сцены", state.scenes.length, "Сохранённые пресеты")}
-          ${overviewCardMarkup("schedules", "Расписания", state.rules.length, "Задержка, разово, повтор, астрономия")}
-          ${overviewCardMarkup("links", "Ссылки", state.actionLinks.length, "Локальные шорткаты и NFC-ready URL")}
+          ${overviewCardMarkup("rooms", "Комнаты", state.rooms.length, "")}
+          ${overviewCardMarkup("devices", "Устройства", state.devices.length, "")}
+          ${overviewCardMarkup("groups", "Группы", state.groups.length, "")}
+          ${overviewCardMarkup("scenes", "Сцены", state.scenes.length, "")}
+          ${overviewCardMarkup("schedules", "Расписания", state.rules.length, "")}
+          ${overviewCardMarkup("links", "Ссылки", state.actionLinks.length, "")}
         </div>
       </section>
 
@@ -913,13 +1046,13 @@ function renderHomeScreen() {
         ${
           roomsPreview.length
             ? `<div class="room-grid">${roomsPreview.map((room) => roomCardMarkup(room)).join("")}</div>`
-            : '<div class="empty-state">Комнат пока нет. Добавь первую через нижнюю панель.</div>'
+            : `<div class="empty-state">${lang("Комнат пока нет. Добавь первую через нижнюю панель.", "No rooms yet. Add the first one from the dock below.")}</div>`
         }
-        ${
-          unassignedCount
-            ? `<div class="details-panel"><div class="card-head"><div><p class="section-kicker">Нужно разложить</p><h3>Свет без комнаты</h3><p class="body-copy">${unassignedCount} устройству(ам) ещё не назначена комната.</p></div><button class="pill-button" type="button" data-open-screen="devices-unassigned">Разобрать</button></div></div>`
-            : ""
-        }
+          ${
+            unassignedCount
+              ? `<div class="details-panel"><div class="card-head"><div><p class="section-kicker">${lang("Нужно разложить", "Needs sorting")}</p><h3>${lang("Свет без комнаты", "Unassigned lights")}</h3><p class="body-copy">${lang(`${unassignedCount} устройству(ам) ещё не назначена комната.`, `${unassignedCount} light(s) still need a room.`)}</p></div><button class="pill-button" type="button" data-open-screen="devices-unassigned">${lang("Разобрать", "Sort out")}</button></div></div>`
+              : ""
+          }
       </section>
     </div>
   `);
@@ -929,22 +1062,22 @@ function renderHomeScreen() {
 
 function renderRoomsScreen() {
   setHeader({
-    kicker: "Комнаты",
-    title: "Все комнаты",
-    subtitle: "Открывай комнату и управляй светом, группами и сценами без длинной прокрутки.",
+    kicker: lang("Комнаты", "Rooms"),
+    title: lang("Все комнаты", "All rooms"),
+    subtitle: lang("Открывай комнату и управляй светом, группами и сценами без длинной прокрутки.", "Open a room and control lights, groups, and scenes without a long scroll."),
   });
   const unassignedCount = state.devices.filter((device) => device.room_id == null).length;
   setContent(`
     <div class="screen-stack">
-      ${
-        unassignedCount
-          ? `<section class="details-panel"><div class="card-head"><div><p class="section-kicker">Без комнаты</p><h3>Есть неразобранный свет</h3><p class="body-copy">${unassignedCount} устройству(ам) всё ещё нужна комната.</p></div><button class="primary-button" type="button" data-open-screen="devices-unassigned">Назначить</button></div></section>`
-          : ""
-      }
+          ${
+            unassignedCount
+              ? `<section class="details-panel"><div class="card-head"><div><p class="section-kicker">${lang("Без комнаты", "Unassigned")}</p><h3>${lang("Есть неразобранный свет", "Lights still need a room")}</h3><p class="body-copy">${lang(`${unassignedCount} устройству(ам) всё ещё нужна комната.`, `${unassignedCount} light(s) still need a room.`)}</p></div><button class="primary-button" type="button" data-open-screen="devices-unassigned">${lang("Назначить", "Assign")}</button></div></section>`
+              : ""
+          }
       ${
         state.rooms.length
           ? `<div class="room-grid">${state.rooms.map((room) => roomCardMarkup(room)).join("")}</div>`
-          : '<div class="empty-state">Комнат пока нет. Создай первую через нижнюю панель.</div>'
+          : `<div class="empty-state">${lang("Комнат пока нет. Создай первую через нижнюю панель.", "No rooms yet. Create the first one from the dock below.")}</div>`
       }
     </div>
   `);
@@ -962,64 +1095,67 @@ function renderRoomDetailScreen(roomId) {
   const groups = state.groups.filter((group) => group.room_id === room.id);
   const scenes = state.scenes.filter((scene) => scene.room_id === room.id);
   setHeader({
-    kicker: "Комната",
+    kicker: lang("Комната", "Room"),
     title: room.name,
-    subtitle: `${devices.length} свет, ${groups.length} группа(ы), ${scenes.length} сцена(ы).`,
+    subtitle: lang(
+      `${lightsLabel(devices.length)}, ${countLabel(groups.length, "группа", "группы", "групп", "group")}, ${countLabel(scenes.length, "сцена", "сцены", "сцен", "scene")}.`,
+      `${devices.length} light(s), ${groups.length} group(s), ${scenes.length} scene(s).`,
+    ),
   });
   setContent(`
     <div class="screen-stack">
       <section class="room-card" style="${roomTintStyle(room.id)}">
         <div class="detail-header">
           <div>
-            <p class="section-kicker">Быстрое управление</p>
+            <p class="section-kicker">${lang("Быстрое управление", "Quick control")}</p>
             <h3>${escapeHtml(room.name)}</h3>
             <div class="pill-row">
-              <span class="meta-pill">${devices.length} свет</span>
-              <span class="meta-pill">${devices.filter((device) => deviceState(device).is_on).length} включено</span>
+              <span class="meta-pill">${lightsLabel(devices.length)}</span>
+              <span class="meta-pill">${activeLabel(devices.filter((device) => deviceState(device).is_on).length)}</span>
             </div>
           </div>
           <div class="inline-actions">
-            <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">Включить</button>
-            <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">Выключить</button>
+            <button class="primary-button" type="button" data-room-action="${room.id}" data-action-name="on">${lang("Включить", "Turn on")}</button>
+            <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="off">${lang("Выключить", "Turn off")}</button>
           </div>
         </div>
         <div class="quick-grid">
           <label class="field">
-            <span>Яркость</span>
+            <span>${lang("Яркость", "Brightness")}</span>
             <input type="range" min="0" max="100" value="70" data-room-brightness="${room.id}" />
           </label>
-          <button class="soft-button" type="button" data-room-action="${room.id}" data-action-name="brightness">Применить</button>
+          <button class="soft-button" type="button" data-room-action="${room.id}" data-action-name="brightness">${lang("Применить", "Apply")}</button>
           <label class="field">
-            <span>Цвет</span>
+            <span>${lang("Цвет", "Color")}</span>
             <input type="color" value="#6de9ff" data-room-color="${room.id}" />
           </label>
-          <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="color">Покрасить</button>
+          <button class="ghost-button" type="button" data-room-action="${room.id}" data-action-name="color">${lang("Покрасить", "Tint")}</button>
         </div>
       </section>
 
       <section class="form-card">
         <div class="section-head compact">
           <div>
-            <p class="section-kicker">Настройки</p>
-            <h3>Изменить комнату</h3>
+            <p class="section-kicker">${lang("Настройки", "Settings")}</p>
+            <h3>${lang("Изменить комнату", "Edit room")}</h3>
           </div>
         </div>
         <form id="room-edit-form" class="form-stack">
           <div class="field-grid">
             <label class="field">
-              <span>Название</span>
+              <span>${lang("Название", "Name")}</span>
               <input name="name" value="${escapeHtml(room.name)}" required />
             </label>
             <label class="field">
-              <span>Порядок</span>
+              <span>${lang("Порядок", "Sort order")}</span>
               <input name="sort_order" type="number" value="${room.sort_order}" />
             </label>
           </div>
           <div class="inline-actions">
-            <button class="primary-button" type="submit">Сохранить</button>
-            <button class="danger-button" type="button" id="room-delete-button">Удалить комнату</button>
-            <button class="soft-button" type="button" data-open-screen="add-group" data-room-id="${room.id}">Новая группа</button>
-            <button class="soft-button" type="button" data-open-screen="add-scene" data-room-id="${room.id}">Новая сцена</button>
+            <button class="primary-button" type="submit">${lang("Сохранить", "Save")}</button>
+            <button class="danger-button" type="button" id="room-delete-button">${lang("Удалить комнату", "Delete room")}</button>
+            <button class="soft-button" type="button" data-open-screen="add-group" data-room-id="${room.id}">${lang("Новая группа", "New group")}</button>
+            <button class="soft-button" type="button" data-open-screen="add-scene" data-room-id="${room.id}">${lang("Новая сцена", "New scene")}</button>
           </div>
         </form>
       </section>
@@ -1027,10 +1163,10 @@ function renderRoomDetailScreen(roomId) {
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Свет</p>
-            <h2>${devices.length ? "В этой комнате" : "Света пока нет"}</h2>
+            <p class="section-kicker">${lang("Свет", "Lights")}</p>
+            <h2>${devices.length ? lang("В этой комнате", "In this room") : lang("Света пока нет", "No lights yet")}</h2>
           </div>
-          <button class="pill-button" type="button" data-open-screen="devices-room" data-room-id="${room.id}">Открыть список</button>
+          <button class="pill-button" type="button" data-open-screen="devices-room" data-room-id="${room.id}">${lang("Открыть список", "Open list")}</button>
         </div>
         ${
           devices.length
@@ -1043,15 +1179,15 @@ function renderRoomDetailScreen(roomId) {
                           <strong>${escapeHtml(device.name)}</strong>
                           <div class="pill-row">
                             <span class="family-pill">${escapeHtml(device.family)}</span>
-                            <span class="status-pill ${deviceState(device).is_on ? "good" : "warn"}">${deviceState(device).is_on ? "Вкл" : "Выкл"}</span>
+                            <span class="status-pill ${deviceState(device).is_on ? "good" : "warn"}">${deviceState(device).is_on ? lang("Вкл", "On") : lang("Выкл", "Off")}</span>
                           </div>
                         </div>
-                        <button class="pill-button" type="button" data-open-device="${device.id}">Открыть</button>
+                        <button class="pill-button" type="button" data-open-device="${device.id}">${lang("Открыть", "Open")}</button>
                       </div>
                     </article>`,
                 )
                 .join("")}</div>`
-            : '<div class="empty-state">В этой комнате пока нет света.</div>'
+            : `<div class="empty-state">${lang("В этой комнате пока нет света.", "No lights in this room yet.")}</div>`
         }
       </section>
 
@@ -1059,8 +1195,8 @@ function renderRoomDetailScreen(roomId) {
         <section class="screen-card">
           <div class="section-head">
             <div>
-              <p class="section-kicker">Groups</p>
-              <h2>${groups.length ? "Room groups" : "No groups yet"}</h2>
+              <p class="section-kicker">${lang("Группы", "Groups")}</p>
+              <h2>${groups.length ? lang("Группы комнаты", "Room groups") : lang("Групп пока нет", "No groups yet")}</h2>
             </div>
           </div>
           ${
@@ -1072,22 +1208,22 @@ function renderRoomDetailScreen(roomId) {
                         <div class="card-head">
                           <div>
                             <strong>${escapeHtml(group.name)}</strong>
-                            <div class="pill-row"><span class="meta-pill">${group.devices?.length || 0} member(s)</span></div>
+                            <div class="pill-row"><span class="meta-pill">${membersLabel(group.devices?.length || 0)}</span></div>
                           </div>
-                          <button class="pill-button" type="button" data-open-group="${group.id}">Open</button>
+                          <button class="pill-button" type="button" data-open-group="${group.id}">${lang("Открыть", "Open")}</button>
                         </div>
                       </article>`,
                   )
                   .join("")}</div>`
-              : '<div class="empty-state">No groups attached to this room yet.</div>'
+              : `<div class="empty-state">${lang("В этой комнате пока нет групп.", "No groups attached to this room yet.")}</div>`
           }
         </section>
 
         <section class="screen-card">
           <div class="section-head">
             <div>
-              <p class="section-kicker">Scenes</p>
-              <h2>${scenes.length ? "Room scenes" : "No scenes yet"}</h2>
+              <p class="section-kicker">${lang("Сцены", "Scenes")}</p>
+              <h2>${scenes.length ? lang("Сцены комнаты", "Room scenes") : lang("Сцен пока нет", "No scenes yet")}</h2>
             </div>
           </div>
           ${
@@ -1099,14 +1235,14 @@ function renderRoomDetailScreen(roomId) {
                         <div class="card-head">
                           <div>
                             <strong>${escapeHtml(scene.name)}</strong>
-                            <div class="pill-row"><span class="meta-pill">${scene.actions?.length || 0} action(s)</span></div>
+                            <div class="pill-row"><span class="meta-pill">${actionsLabel(scene.actions?.length || 0)}</span></div>
                           </div>
-                          <button class="primary-button" type="button" data-run-scene="${scene.id}">Run</button>
+                          <button class="primary-button" type="button" data-run-scene="${scene.id}">${lang("Запустить", "Run")}</button>
                         </div>
                       </article>`,
                   )
                   .join("")}</div>`
-              : '<div class="empty-state">No scenes attached to this room yet.</div>'
+              : `<div class="empty-state">${lang("В этой комнате пока нет сцен.", "No scenes attached to this room yet.")}</div>`
           }
         </section>
       </div>
@@ -1125,14 +1261,14 @@ function renderRoomDetailScreen(roomId) {
       body: JSON.stringify({ name: data.name, sort_order: Number(data.sort_order || 0) }),
     });
     await refreshAll({ silent: true });
-    showToast("Room updated");
+    showToast(lang("Комната обновлена", "Room updated"));
   });
 
   els.content.querySelector("#room-delete-button").addEventListener("click", async () => {
-    if (!window.confirm(`Delete room "${room.name}"?`)) return;
+    if (!window.confirm(lang(`Удалить комнату "${room.name}"?`, `Delete room "${room.name}"?`))) return;
     try {
       await api(`/api/rooms/${room.id}`, { method: "DELETE" });
-      showToast("Room deleted");
+    showToast(lang("Комната удалена", "Room deleted"));
       openScreen("rooms", {}, { replace: true });
       await refreshAll({ silent: true });
     } catch (error) {
@@ -1143,18 +1279,18 @@ function renderRoomDetailScreen(roomId) {
 
 function renderDevicesScreen({ roomId = null, onlyUnassigned = false } = {}) {
   let devices = state.devices;
-  let subtitle = "Повседневное управление каждым светильником.";
+  let subtitle = lang("Повседневное управление каждым светильником.", "Everyday control for each light.");
   if (roomId != null) {
     devices = devices.filter((device) => device.room_id === roomId);
-    subtitle = `Показываю только свет из комнаты ${roomLabel(roomId)}.`;
+    subtitle = lang(`Показываю только свет из комнаты ${roomLabel(roomId)}.`, `Showing only lights from ${roomLabel(roomId)}.`);
   }
   if (onlyUnassigned) {
     devices = devices.filter((device) => device.room_id == null);
-    subtitle = "Этому свету нужна комната, чтобы он оказался на своём месте.";
+    subtitle = lang("Этому свету нужна комната, чтобы он оказался на своём месте.", "These lights need a room so they show up in the right place.");
   }
   setHeader({
-    kicker: "Устройства",
-    title: onlyUnassigned ? "Свет без комнаты" : roomId != null ? roomLabel(roomId) : "Все устройства",
+    kicker: lang("Устройства", "Devices"),
+    title: onlyUnassigned ? lang("Свет без комнаты", "Unassigned lights") : roomId != null ? roomLabel(roomId) : lang("Все устройства", "All devices"),
     subtitle,
   });
   setContent(`
@@ -1162,15 +1298,15 @@ function renderDevicesScreen({ roomId = null, onlyUnassigned = false } = {}) {
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Свет</p>
-            <h2>${devices.length ? "Выбери устройство" : "Устройств пока нет"}</h2>
+            <p class="section-kicker">${lang("Свет", "Lights")}</p>
+            <h2>${devices.length ? lang("Выбери устройство", "Choose a light") : lang("Устройств пока нет", "No lights yet")}</h2>
           </div>
-          <button class="primary-button" type="button" data-open-screen="add-device">Добавить свет</button>
+          <button class="primary-button" type="button" data-open-screen="add-device">${lang("Добавить свет", "Add light")}</button>
         </div>
         ${
           devices.length
             ? `<div class="list-grid">${devices.map((device) => deviceCardMarkup(device)).join("")}</div>`
-            : '<div class="empty-state">В этом разделе пока ничего нет.</div>'
+            : `<div class="empty-state">${lang("В этом разделе пока ничего нет.", "Nothing is here yet.")}</div>`
         }
       </section>
     </div>
@@ -1188,73 +1324,73 @@ function renderDeviceDetailScreen(deviceId) {
   const current = deviceState(device);
   const groupNames = state.groups.filter((group) => (group.devices || []).some((member) => member.id === device.id)).map((group) => group.name);
   setHeader({
-    kicker: "Устройство",
+    kicker: lang("Устройство", "Device"),
     title: device.name,
-    subtitle: `${device.family} в комнате ${roomLabel(device.room_id)}.`,
+    subtitle: lang(`${device.family} в комнате ${roomLabel(device.room_id)}.`, `${device.family} in ${roomLabel(device.room_id)}.`),
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="detail-header">
           <div>
-            <p class="section-kicker">Быстрое управление</p>
+            <p class="section-kicker">${lang("Быстрое управление", "Quick control")}</p>
             <h3>${escapeHtml(device.name)}</h3>
             <div class="pill-row">
               <span class="family-pill">${escapeHtml(device.family)}</span>
-              <span class="status-pill ${current.is_on ? "good" : "warn"}">${current.is_on ? "Вкл" : "Выкл"}</span>
+              <span class="status-pill ${current.is_on ? "good" : "warn"}">${current.is_on ? lang("Вкл", "On") : lang("Выкл", "Off")}</span>
               <span class="meta-pill">${escapeHtml(roomLabel(device.room_id))}</span>
             </div>
           </div>
           <div class="inline-actions">
-            <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? "Выключить" : "Включить"}</button>
+            <button class="primary-button" type="button" data-device-toggle="${device.id}">${current.is_on ? lang("Выключить", "Turn off") : lang("Включить", "Turn on")}</button>
           </div>
         </div>
         <div class="quick-grid">
           <label class="field">
-            <span>Яркость</span>
+            <span>${lang("Яркость", "Brightness")}</span>
             <input type="range" min="0" max="100" value="${Number(current.brightness ?? 100)}" data-device-brightness="${device.id}" />
           </label>
-          <button class="soft-button" type="button" data-device-action="${device.id}" data-action-name="brightness">Применить</button>
+          <button class="soft-button" type="button" data-device-action="${device.id}" data-action-name="brightness">${lang("Применить", "Apply")}</button>
           <label class="field">
-            <span>Цвет</span>
+            <span>${lang("Цвет", "Color")}</span>
             <input type="color" value="${rgbToHex(current.rgb)}" data-device-color="${device.id}" />
           </label>
-          <button class="ghost-button" type="button" data-device-action="${device.id}" data-action-name="color">Применить</button>
+          <button class="ghost-button" type="button" data-device-action="${device.id}" data-action-name="color">${lang("Применить", "Apply")}</button>
         </div>
       </section>
 
       <section class="form-card">
         <div class="section-head compact">
           <div>
-            <p class="section-kicker">Настройки</p>
-            <h3>Изменить устройство</h3>
+            <p class="section-kicker">${lang("Настройки", "Settings")}</p>
+            <h3>${lang("Изменить устройство", "Edit light")}</h3>
           </div>
         </div>
         <form id="device-edit-form" class="form-stack">
           <div class="field-grid">
             <label class="field">
-              <span>Название</span>
+              <span>${lang("Название", "Name")}</span>
               <input name="name" value="${escapeHtml(device.name)}" required />
             </label>
             <label class="field">
-              <span>Комната</span>
-              <select name="room_id">${roomOptionsMarkup(device.room_id ?? "", { allowBlank: true, blankLabel: "Без комнаты" })}</select>
+              <span>${lang("Комната", "Room")}</span>
+              <select name="room_id">${roomOptionsMarkup(device.room_id ?? "", { allowBlank: true, blankLabel: lang("Без комнаты", "No room") })}</select>
             </label>
           </div>
           <label class="toggle-row">
             <input name="is_enabled" type="checkbox"${device.is_enabled ? " checked" : ""} />
-            <span>Оставить устройство активным в приложении</span>
+            <span>${lang("Оставить устройство активным в приложении", "Keep this light enabled in the app")}</span>
           </label>
           ${
             groupNames.length
-              ? `<div class="details-panel"><p class="section-kicker">Группы</p><div class="pill-row">${groupNames
+              ? `<div class="details-panel"><p class="section-kicker">${lang("Группы", "Groups")}</p><div class="pill-row">${groupNames
                   .map((name) => `<span class="meta-pill">${escapeHtml(name)}</span>`)
                   .join("")}</div></div>`
               : ""
           }
           <div class="inline-actions">
-            <button class="primary-button" type="submit">Сохранить</button>
-            <button class="danger-button" type="button" id="device-delete-button">Удалить устройство</button>
+            <button class="primary-button" type="submit">${lang("Сохранить", "Save")}</button>
+            <button class="danger-button" type="button" id="device-delete-button">${lang("Удалить устройство", "Delete light")}</button>
           </div>
         </form>
       </section>
@@ -1278,13 +1414,13 @@ function renderDeviceDetailScreen(deviceId) {
     syncDeviceInState(updated);
     renderScreen();
     enqueueRefresh();
-    showToast("Light updated");
+    showToast(lang("Свет обновлён", "Light updated"));
   });
 
   els.content.querySelector("#device-delete-button").addEventListener("click", async () => {
-    if (!window.confirm(`Delete light "${device.name}"?`)) return;
+    if (!window.confirm(lang(`Удалить устройство "${device.name}"?`, `Delete light "${device.name}"?`))) return;
     await api(`/api/devices/${device.id}`, { method: "DELETE" });
-    showToast("Light deleted");
+    showToast(lang("Свет удалён", "Light deleted"));
     openScreen("devices", {}, { replace: true });
     await refreshAll({ silent: true });
   });
@@ -1292,24 +1428,24 @@ function renderDeviceDetailScreen(deviceId) {
 
 function renderGroupsScreen() {
   setHeader({
-    kicker: "Groups",
-    title: "Mixed groups",
-    subtitle: "Combine supported families and control them together.",
+    kicker: lang("Группы", "Groups"),
+    title: lang("Смешанные группы", "Mixed groups"),
+    subtitle: lang("Собирай поддерживаемые семейства и управляй ими вместе.", "Combine supported families and control them together."),
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Groups</p>
-            <h2>${state.groups.length ? "Choose a group" : "No groups yet"}</h2>
+            <p class="section-kicker">${lang("Группы", "Groups")}</p>
+            <h2>${state.groups.length ? lang("Выбери группу", "Choose a group") : lang("Групп пока нет", "No groups yet")}</h2>
           </div>
-          <button class="primary-button" type="button" data-open-screen="add-group">Add group</button>
+          <button class="primary-button" type="button" data-open-screen="add-group">${lang("Добавить группу", "Add group")}</button>
         </div>
         ${
           state.groups.length
             ? `<div class="list-grid">${state.groups.map((group) => groupCardMarkup(group)).join("")}</div>`
-            : '<div class="empty-state">Create a group when you want different lights to move together.</div>'
+            : `<div class="empty-state">${lang("Создай группу, когда хочешь двигать разный свет вместе.", "Create a group when you want different lights to move together.")}</div>`
         }
       </section>
     </div>
@@ -1327,38 +1463,38 @@ function renderGroupDetailScreen(groupId) {
   const memberIds = new Set((group.devices || []).map((device) => device.id));
   const availableDevices = state.devices.filter((device) => !memberIds.has(device.id));
   setHeader({
-    kicker: "Group",
+    kicker: lang("Группа", "Group"),
     title: group.name,
-    subtitle: `${group.devices?.length || 0} member(s) across ${groupFamilies(group).length || 0} family group(s).`,
+    subtitle: localizeDynamicText(`${group.devices?.length || 0} member(s) across ${groupFamilies(group).length || 0} family group(s).`),
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="detail-header">
           <div>
-            <p class="section-kicker">Quick control</p>
+            <p class="section-kicker">${lang("Быстрое управление", "Quick control")}</p>
             <h3>${escapeHtml(group.name)}</h3>
             <div class="pill-row">
-              <span class="meta-pill">${group.devices?.length || 0} member(s)</span>
-              <span class="family-pill">${escapeHtml(groupFamilies(group).join(", ") || "Empty")}</span>
+              <span class="meta-pill">${membersLabel(group.devices?.length || 0)}</span>
+              <span class="family-pill">${escapeHtml(groupFamilies(group).join(", ") || lang("Пусто", "Empty"))}</span>
             </div>
           </div>
           <div class="inline-actions">
-            <button class="primary-button" type="button" data-group-action="${group.id}" data-action-name="on">On</button>
-            <button class="ghost-button" type="button" data-group-action="${group.id}" data-action-name="off">Off</button>
+            <button class="primary-button" type="button" data-group-action="${group.id}" data-action-name="on">${lang("Вкл", "On")}</button>
+            <button class="ghost-button" type="button" data-group-action="${group.id}" data-action-name="off">${lang("Выкл", "Off")}</button>
           </div>
         </div>
         <div class="quick-grid">
           <label class="field">
-            <span>Brightness</span>
+            <span>${lang("Яркость", "Brightness")}</span>
             <input type="range" min="0" max="100" value="70" data-group-brightness="${group.id}" />
           </label>
-          <button class="soft-button" type="button" data-group-action="${group.id}" data-action-name="brightness">Apply</button>
+          <button class="soft-button" type="button" data-group-action="${group.id}" data-action-name="brightness">${lang("Применить", "Apply")}</button>
           <label class="field">
-            <span>Color</span>
+            <span>${lang("Цвет", "Color")}</span>
             <input type="color" value="#6de9ff" data-group-color="${group.id}" />
           </label>
-          <button class="ghost-button" type="button" data-group-action="${group.id}" data-action-name="color">Apply</button>
+          <button class="ghost-button" type="button" data-group-action="${group.id}" data-action-name="color">${lang("Применить", "Apply")}</button>
         </div>
       </section>
 
@@ -1366,24 +1502,24 @@ function renderGroupDetailScreen(groupId) {
         <section class="form-card">
           <div class="section-head compact">
             <div>
-              <p class="section-kicker">Settings</p>
-              <h3>Edit group</h3>
+              <p class="section-kicker">${lang("Настройки", "Settings")}</p>
+              <h3>${lang("Изменить группу", "Edit group")}</h3>
             </div>
           </div>
           <form id="group-edit-form" class="form-stack">
             <div class="field-grid">
               <label class="field">
-                <span>Name</span>
+                <span>${lang("Название", "Name")}</span>
                 <input name="name" value="${escapeHtml(group.name)}" required />
               </label>
               <label class="field">
-                <span>Room</span>
-                <select name="room_id">${roomOptionsMarkup(group.room_id ?? "", { allowBlank: true, blankLabel: "No room" })}</select>
+                <span>${lang("Комната", "Room")}</span>
+                <select name="room_id">${roomOptionsMarkup(group.room_id ?? "", { allowBlank: true, blankLabel: lang("Без комнаты", "No room") })}</select>
               </label>
             </div>
             <div class="inline-actions">
-              <button class="primary-button" type="submit">Save group</button>
-              <button class="danger-button" type="button" id="group-delete-button">Delete group</button>
+              <button class="primary-button" type="submit">${lang("Сохранить группу", "Save group")}</button>
+              <button class="danger-button" type="button" id="group-delete-button">${lang("Удалить группу", "Delete group")}</button>
             </div>
           </form>
         </section>
@@ -1391,18 +1527,18 @@ function renderGroupDetailScreen(groupId) {
         <section class="form-card">
           <div class="section-head compact">
             <div>
-              <p class="section-kicker">Members</p>
-              <h3>Add a light</h3>
+              <p class="section-kicker">${lang("Участники", "Members")}</p>
+              <h3>${lang("Добавить свет", "Add a light")}</h3>
             </div>
           </div>
           <form id="group-attach-form" class="form-stack">
             <label class="field">
-              <span>Light</span>
+              <span>${lang("Свет", "Light")}</span>
               <select name="device_id">${availableDevices.length ? availableDevices
                 .map((device) => `<option value="${device.id}">${escapeHtml(device.name)} - ${escapeHtml(roomLabel(device.room_id))}</option>`)
-                .join("") : '<option value="">No more lights to add</option>'}</select>
+                .join("") : `<option value="">${lang("Больше нечего добавлять", "No more lights to add")}</option>`}</select>
             </label>
-            <button class="primary-button" type="submit"${availableDevices.length ? "" : " disabled"}>Attach light</button>
+            <button class="primary-button" type="submit"${availableDevices.length ? "" : " disabled"}>${lang("Добавить свет", "Attach light")}</button>
           </form>
         </section>
       </div>
@@ -1410,8 +1546,8 @@ function renderGroupDetailScreen(groupId) {
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Current members</p>
-            <h2>${group.devices?.length ? "Attached lights" : "No members yet"}</h2>
+            <p class="section-kicker">${lang("Участники", "Current members")}</p>
+            <h2>${group.devices?.length ? lang("Подключённый свет", "Attached lights") : lang("Участников пока нет", "No members yet")}</h2>
           </div>
         </div>
         ${
@@ -1429,14 +1565,14 @@ function renderGroupDetailScreen(groupId) {
                           </div>
                         </div>
                         <div class="inline-actions">
-                          <button class="pill-button" type="button" data-open-device="${device.id}">Open</button>
-                          <button class="danger-button" type="button" data-detach-device="${device.id}">Remove</button>
+                          <button class="pill-button" type="button" data-open-device="${device.id}">${lang("Открыть", "Open")}</button>
+                          <button class="danger-button" type="button" data-detach-device="${device.id}">${lang("Убрать", "Remove")}</button>
                         </div>
                       </div>
                     </article>`,
                 )
                 .join("")}</div>`
-            : '<div class="empty-state">Attach at least one light to make this group useful.</div>'
+            : `<div class="empty-state">${lang("Добавь хотя бы один свет, чтобы группа стала полезной.", "Attach at least one light to make this group useful.")}</div>`
         }
       </section>
     </div>
@@ -1453,13 +1589,13 @@ function renderGroupDetailScreen(groupId) {
       body: JSON.stringify({ name: data.name, room_id: data.room_id ? Number(data.room_id) : null }),
     });
     await refreshAll({ silent: true });
-    showToast("Group updated");
+    showToast(lang("Группа обновлена", "Group updated"));
   });
 
   els.content.querySelector("#group-delete-button").addEventListener("click", async () => {
-    if (!window.confirm(`Delete group "${group.name}"?`)) return;
+    if (!window.confirm(lang(`Удалить группу "${group.name}"?`, `Delete group "${group.name}"?`))) return;
     await api(`/api/groups/${group.id}`, { method: "DELETE" });
-    showToast("Group deleted");
+    showToast(lang("Группа удалена", "Group deleted"));
     openScreen("groups", {}, { replace: true });
     await refreshAll({ silent: true });
   });
@@ -1474,14 +1610,14 @@ function renderGroupDetailScreen(groupId) {
       body: JSON.stringify({ device_id: Number(data.device_id) }),
     });
     await refreshAll({ silent: true });
-    showToast("Light added to group");
+    showToast(lang("Свет добавлен в группу", "Light added to group"));
   });
 
   els.content.querySelectorAll("[data-detach-device]").forEach((button) => {
     button.addEventListener("click", async () => {
       await api(`/api/groups/${group.id}/devices/${button.dataset.detachDevice}`, { method: "DELETE" });
       await refreshAll({ silent: true });
-      showToast("Light removed from group");
+    showToast(lang("Свет убран из группы", "Light removed from group"));
     });
   });
 }
@@ -1491,60 +1627,60 @@ function sceneActionFormMarkup(scene) {
     <form id="scene-action-form" class="form-stack">
       <div class="field-grid">
         <label class="field">
-          <span>Target type</span>
+          <span>${lang("Тип цели", "Target type")}</span>
           <select name="target_type" id="scene-target-type">
-            <option value="device">Device</option>
-            <option value="group">Group</option>
+            <option value="device">${lang("Устройство", "Device")}</option>
+            <option value="group">${lang("Группа", "Group")}</option>
           </select>
         </label>
         <label class="field">
-          <span>Target</span>
+          <span>${lang("Цель", "Target")}</span>
           <select name="target_id" id="scene-target-id">${targetOptionsMarkup("device")}</select>
         </label>
         <label class="field">
-          <span>Action</span>
+          <span>${lang("Действие", "Action")}</span>
           <select name="action_type" id="scene-action-type">${sceneActionOptionsMarkup("on")}</select>
         </label>
         <label class="field">
-          <span>Sort order</span>
+          <span>${lang("Порядок", "Sort order")}</span>
           <input name="sort_order" type="number" value="${scene.actions?.length || 0}" />
         </label>
       </div>
       <div class="field-grid" id="scene-action-extra">
         <label class="field is-hidden" data-scene-extra="brightness">
-          <span>Brightness</span>
+          <span>${lang("Яркость", "Brightness")}</span>
           <input name="brightness_value" type="range" min="0" max="100" value="60" />
         </label>
         <label class="field is-hidden" data-scene-extra="color">
-          <span>Color</span>
+          <span>${lang("Цвет", "Color")}</span>
           <input name="color_value" type="color" value="#6de9ff" />
         </label>
       </div>
-      <button class="primary-button" type="submit">Add action</button>
+      <button class="primary-button" type="submit">${lang("Добавить действие", "Add action")}</button>
     </form>
   `;
 }
 
 function renderScenesScreen() {
   setHeader({
-    kicker: "Scenes",
-    title: "Scenes",
-    subtitle: "Save mixed actions as reusable presets and run them in one tap.",
+    kicker: lang("Сцены", "Scenes"),
+    title: lang("Сцены", "Scenes"),
+    subtitle: lang("Сохраняй смешанные действия как пресеты и запускай в один тап.", "Save mixed actions as reusable presets and run them in one tap."),
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Scenes</p>
-            <h2>${state.scenes.length ? "Choose a scene" : "No scenes yet"}</h2>
+            <p class="section-kicker">${lang("Сцены", "Scenes")}</p>
+            <h2>${state.scenes.length ? lang("Выбери сцену", "Choose a scene") : lang("Сцен пока нет", "No scenes yet")}</h2>
           </div>
-          <button class="primary-button" type="button" data-open-screen="add-scene">Add scene</button>
+          <button class="primary-button" type="button" data-open-screen="add-scene">${lang("Добавить сцену", "Add scene")}</button>
         </div>
         ${
           state.scenes.length
             ? `<div class="list-grid">${state.scenes.map((scene) => sceneCardMarkup(scene)).join("")}</div>`
-            : '<div class="empty-state">Create a scene when you want one-tap mixed behavior.</div>'
+            : `<div class="empty-state">${lang("Создай сцену, когда нужен one-tap запуск смешанного поведения.", "Create a scene when you want one-tap mixed behavior.")}</div>`
         }
       </section>
     </div>
@@ -1560,23 +1696,23 @@ function renderSceneDetailScreen(sceneId) {
     return;
   }
   setHeader({
-    kicker: "Scene",
+    kicker: lang("Сцена", "Scene"),
     title: scene.name,
-    subtitle: `${scene.actions?.length || 0} action(s) ready to run.`,
+    subtitle: localizeDynamicText(`${scene.actions?.length || 0} action(s) ready to run.`),
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="detail-header">
           <div>
-            <p class="section-kicker">Run</p>
+            <p class="section-kicker">${lang("Запуск", "Run")}</p>
             <h3>${escapeHtml(scene.name)}</h3>
             <div class="pill-row">
-              <span class="meta-pill">${scene.actions?.length || 0} action(s)</span>
-              <span class="status-pill ${scene.is_enabled ? "good" : "warn"}">${scene.is_enabled ? "Enabled" : "Disabled"}</span>
+              <span class="meta-pill">${actionsLabel(scene.actions?.length || 0)}</span>
+              <span class="status-pill ${scene.is_enabled ? "good" : "warn"}">${scene.is_enabled ? lang("Включена", "Enabled") : lang("Выключена", "Disabled")}</span>
             </div>
           </div>
-          <button class="primary-button" type="button" data-run-scene="${scene.id}">Run scene</button>
+          <button class="primary-button" type="button" data-run-scene="${scene.id}">${lang("Запустить сцену", "Run scene")}</button>
         </div>
       </section>
 
@@ -1584,28 +1720,28 @@ function renderSceneDetailScreen(sceneId) {
         <section class="form-card">
           <div class="section-head compact">
             <div>
-              <p class="section-kicker">Settings</p>
-              <h3>Edit scene</h3>
+              <p class="section-kicker">${lang("Настройки", "Settings")}</p>
+              <h3>${lang("Изменить сцену", "Edit scene")}</h3>
             </div>
           </div>
           <form id="scene-edit-form" class="form-stack">
             <div class="field-grid">
               <label class="field">
-                <span>Name</span>
+                <span>${lang("Название", "Name")}</span>
                 <input name="name" value="${escapeHtml(scene.name)}" required />
               </label>
               <label class="field">
-                <span>Room</span>
-                <select name="room_id">${roomOptionsMarkup(scene.room_id ?? "", { allowBlank: true, blankLabel: "No room" })}</select>
+                <span>${lang("Комната", "Room")}</span>
+                <select name="room_id">${roomOptionsMarkup(scene.room_id ?? "", { allowBlank: true, blankLabel: lang("Без комнаты", "No room") })}</select>
               </label>
             </div>
             <label class="toggle-row">
               <input name="is_enabled" type="checkbox"${scene.is_enabled ? " checked" : ""} />
-              <span>Keep this scene enabled</span>
+              <span>${lang("Держать сцену включённой", "Keep this scene enabled")}</span>
             </label>
             <div class="inline-actions">
-              <button class="primary-button" type="submit">Save scene</button>
-              <button class="danger-button" type="button" id="scene-delete-button">Delete scene</button>
+              <button class="primary-button" type="submit">${lang("Сохранить сцену", "Save scene")}</button>
+              <button class="danger-button" type="button" id="scene-delete-button">${lang("Удалить сцену", "Delete scene")}</button>
             </div>
           </form>
         </section>
@@ -1613,8 +1749,8 @@ function renderSceneDetailScreen(sceneId) {
         <section class="form-card">
           <div class="section-head compact">
             <div>
-              <p class="section-kicker">Build actions</p>
-              <h3>Add a step</h3>
+              <p class="section-kicker">${lang("Собрать действия", "Build actions")}</p>
+              <h3>${lang("Добавить шаг", "Add a step")}</h3>
             </div>
           </div>
           ${sceneActionFormMarkup(scene)}
@@ -1624,8 +1760,8 @@ function renderSceneDetailScreen(sceneId) {
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Actions</p>
-            <h2>${scene.actions?.length ? "Current scene steps" : "No actions yet"}</h2>
+            <p class="section-kicker">${lang("Действия", "Actions")}</p>
+            <h2>${scene.actions?.length ? lang("Текущие шаги сцены", "Current scene steps") : lang("Действий пока нет", "No actions yet")}</h2>
           </div>
         </div>
         ${
@@ -1638,17 +1774,17 @@ function renderSceneDetailScreen(sceneId) {
                         <div>
                           <strong>${escapeHtml(targetLabel(action.target_type, action.target_id))}</strong>
                           <div class="pill-row">
-                            <span class="meta-pill">${escapeHtml(action.target_type)}</span>
+                            <span class="meta-pill">${escapeHtml(targetLabel(action.target_type, action.target_id))}</span>
                             <span class="meta-pill">${escapeHtml(sceneActionSummary(action))}</span>
-                            <span class="meta-pill">Step ${action.sort_order}</span>
+                            <span class="meta-pill">${lang(`Шаг ${action.sort_order}`, `Step ${action.sort_order}`)}</span>
                           </div>
                         </div>
-                        <button class="danger-button" type="button" data-scene-action-delete="${action.id}">Remove</button>
+                        <button class="danger-button" type="button" data-scene-action-delete="${action.id}">${lang("Убрать", "Remove")}</button>
                       </div>
                     </article>`,
                 )
                 .join("")}</div>`
-            : '<div class="empty-state">Add device or group steps here. No need to jump into Advanced for normal scenes anymore.</div>'
+            : `<div class="empty-state">${lang("Добавляй сюда шаги устройств или групп.", "Add device or group steps here.")}</div>`
         }
       </section>
     </div>
@@ -1670,13 +1806,13 @@ function renderSceneDetailScreen(sceneId) {
       }),
     });
     await refreshAll({ silent: true });
-    showToast("Scene updated");
+    showToast(lang("Сцена обновлена", "Scene updated"));
   });
 
   els.content.querySelector("#scene-delete-button").addEventListener("click", async () => {
-    if (!window.confirm(`Delete scene "${scene.name}"?`)) return;
+    if (!window.confirm(lang(`Удалить сцену "${scene.name}"?`, `Delete scene "${scene.name}"?`))) return;
     await api(`/api/scenes/${scene.id}`, { method: "DELETE" });
-    showToast("Scene deleted");
+    showToast(lang("Сцена удалена", "Scene deleted"));
     openScreen("scenes", {}, { replace: true });
     await refreshAll({ silent: true });
   });
@@ -1685,7 +1821,7 @@ function renderSceneDetailScreen(sceneId) {
     button.addEventListener("click", async () => {
       await api(`/api/scenes/${scene.id}/actions/${button.dataset.sceneActionDelete}`, { method: "DELETE" });
       await refreshAll({ silent: true });
-      showToast("Scene action removed");
+    showToast(lang("Действие сцены удалено", "Scene action removed"));
     });
   });
 }
@@ -1697,90 +1833,90 @@ function scheduleFormMarkup(rule = null) {
     <form id="schedule-form" class="form-stack" data-mode="${rule ? "edit" : "create"}">
       <div class="field-grid">
         <label class="field">
-          <span>Name</span>
-          <input name="name" value="${escapeHtml(data.name)}" placeholder="Weeknight glow" required />
+          <span>${lang("Название", "Name")}</span>
+          <input name="name" value="${escapeHtml(data.name)}" placeholder="${lang("Вечерний свет", "Weeknight glow")}" required />
         </label>
         <label class="field">
-          <span>Target type</span>
+          <span>${lang("Тип цели", "Target type")}</span>
           <select name="target_type" id="schedule-target-type">
-            <option value="device"${data.target_type === "device" ? " selected" : ""}>Device</option>
-            <option value="group"${data.target_type === "group" ? " selected" : ""}>Group</option>
-            <option value="scene"${data.target_type === "scene" ? " selected" : ""}>Scene</option>
+            <option value="device"${data.target_type === "device" ? " selected" : ""}>${lang("Устройство", "Device")}</option>
+            <option value="group"${data.target_type === "group" ? " selected" : ""}>${lang("Группа", "Group")}</option>
+            <option value="scene"${data.target_type === "scene" ? " selected" : ""}>${lang("Сцена", "Scene")}</option>
           </select>
         </label>
         <label class="field">
-          <span>Target</span>
+          <span>${lang("Цель", "Target")}</span>
           <select name="target_id" id="schedule-target-id">${targetOptionsMarkup(data.target_type, data.target_id)}</select>
         </label>
         <label class="field">
-          <span>Rule type</span>
+          <span>${lang("Тип правила", "Rule type")}</span>
           <select name="rule_type" id="schedule-rule-type">
-            <option value="delay"${data.rule_type === "delay" ? " selected" : ""}>Delay</option>
-            <option value="once"${data.rule_type === "once" ? " selected" : ""}>Once</option>
-            <option value="recurring"${data.rule_type === "recurring" ? " selected" : ""}>Recurring</option>
-            <option value="astronomical"${data.rule_type === "astronomical" ? " selected" : ""}>Astronomical</option>
+            <option value="delay"${data.rule_type === "delay" ? " selected" : ""}>${lang("Задержка", "Delay")}</option>
+            <option value="once"${data.rule_type === "once" ? " selected" : ""}>${lang("Один раз", "Once")}</option>
+            <option value="recurring"${data.rule_type === "recurring" ? " selected" : ""}>${lang("Повтор", "Recurring")}</option>
+            <option value="astronomical"${data.rule_type === "astronomical" ? " selected" : ""}>${lang("Астрономическое", "Astronomical")}</option>
           </select>
         </label>
         <label class="field">
-          <span>Action</span>
+          <span>${lang("Действие", "Action")}</span>
           <select name="action" id="schedule-action">${scheduleActionOptionsMarkup(data.target_type, data.action)}</select>
         </label>
         <label class="field">
-          <span>Timezone</span>
+          <span>${lang("Часовой пояс", "Timezone")}</span>
           <select name="timezone">${timezoneOptionsMarkup(data.timezone)}</select>
         </label>
       </div>
 
       <div class="field-grid" id="schedule-action-fields">
         <label class="field${data.action === "brightness" ? "" : " is-hidden"}" data-rule-extra="brightness">
-          <span>Brightness</span>
+          <span>${lang("Яркость", "Brightness")}</span>
           <input name="brightness_value" type="range" min="0" max="100" value="${data.brightness_value}" />
         </label>
         <label class="field${data.action === "color" ? "" : " is-hidden"}" data-rule-extra="color">
-          <span>Color</span>
+          <span>${lang("Цвет", "Color")}</span>
           <input name="color_value" type="color" value="${data.color_value}" />
         </label>
       </div>
 
       <div class="field-grid${data.rule_type === "delay" ? "" : " is-hidden"}" id="delay-fields">
         <label class="field">
-          <span>Delay seconds</span>
+          <span>${lang("Задержка в секундах", "Delay seconds")}</span>
           <input name="delay_seconds" type="number" min="0" value="${data.delay_seconds}" />
         </label>
       </div>
 
       <div class="field-grid${data.rule_type === "once" ? "" : " is-hidden"}" id="once-fields">
         <label class="field">
-          <span>Run at</span>
+          <span>${lang("Запустить в", "Run at")}</span>
           <input name="run_at" type="datetime-local" value="${data.run_at}" />
         </label>
       </div>
 
       <div class="field-grid${data.rule_type === "recurring" ? "" : " is-hidden"}" id="recurring-fields">
         <label class="field">
-          <span>Time</span>
+          <span>${lang("Время", "Time")}</span>
           <input name="recurring_time" type="time" value="${data.recurring_time}" />
         </label>
       </div>
 
       <div class="field-grid${data.rule_type === "astronomical" ? "" : " is-hidden"}" id="astronomical-fields">
         <label class="field">
-          <span>Solar event</span>
+          <span>${lang("Солнечное событие", "Solar event")}</span>
           <select name="solar_event">
-            <option value="sunset"${data.solar_event === "sunset" ? " selected" : ""}>Sunset</option>
-            <option value="sunrise"${data.solar_event === "sunrise" ? " selected" : ""}>Sunrise</option>
+            <option value="sunset"${data.solar_event === "sunset" ? " selected" : ""}>${lang("Закат", "Sunset")}</option>
+            <option value="sunrise"${data.solar_event === "sunrise" ? " selected" : ""}>${lang("Рассвет", "Sunrise")}</option>
           </select>
         </label>
         <label class="field">
-          <span>Offset minutes</span>
+          <span>${lang("Смещение в минутах", "Offset minutes")}</span>
           <input name="offset_minutes" type="number" value="${data.offset_minutes}" />
         </label>
         <label class="field">
-          <span>Latitude</span>
+          <span>${lang("Широта", "Latitude")}</span>
           <input name="lat" type="number" step="0.0001" value="${data.lat}" />
         </label>
         <label class="field">
-          <span>Longitude</span>
+          <span>${lang("Долгота", "Longitude")}</span>
           <input name="lon" type="number" step="0.0001" value="${data.lon}" />
         </label>
       </div>
@@ -1788,15 +1924,15 @@ function scheduleFormMarkup(rule = null) {
       <div class="details-panel">
         <div class="section-head compact">
           <div>
-            <p class="section-kicker">Days</p>
-            <h3>Choose when it runs</h3>
+            <p class="section-kicker">${lang("Дни", "Days")}</p>
+            <h3>${lang("Выбери, когда запускать", "Choose when it runs")}</h3>
           </div>
         </div>
         <div class="chip-row">
-          <label class="choice-chip"><input type="radio" name="day_mode" value="everyday"${data.day_mode === "everyday" ? " checked" : ""} /><span>Every day</span></label>
-          <label class="choice-chip"><input type="radio" name="day_mode" value="weekdays"${data.day_mode === "weekdays" ? " checked" : ""} /><span>Weekdays</span></label>
-          <label class="choice-chip"><input type="radio" name="day_mode" value="weekends"${data.day_mode === "weekends" ? " checked" : ""} /><span>Weekends</span></label>
-          <label class="choice-chip"><input type="radio" name="day_mode" value="custom"${data.day_mode === "custom" ? " checked" : ""} /><span>Custom</span></label>
+          <label class="choice-chip"><input type="radio" name="day_mode" value="everyday"${data.day_mode === "everyday" ? " checked" : ""} /><span>${lang("Каждый день", "Every day")}</span></label>
+          <label class="choice-chip"><input type="radio" name="day_mode" value="weekdays"${data.day_mode === "weekdays" ? " checked" : ""} /><span>${lang("Будни", "Weekdays")}</span></label>
+          <label class="choice-chip"><input type="radio" name="day_mode" value="weekends"${data.day_mode === "weekends" ? " checked" : ""} /><span>${lang("Выходные", "Weekends")}</span></label>
+          <label class="choice-chip"><input type="radio" name="day_mode" value="custom"${data.day_mode === "custom" ? " checked" : ""} /><span>${lang("Свои", "Custom")}</span></label>
         </div>
         <div class="chip-row${customDays ? "" : " is-hidden"}" id="custom-days">
           ${DAY_ORDER.map((day) => `<label class="choice-chip"><input type="checkbox" name="custom_day" value="${day}"${data.days_mask & DAY_BITS[day] ? " checked" : ""} /><span>${DAY_LABELS[day]}</span></label>`).join("")}
@@ -1805,14 +1941,14 @@ function scheduleFormMarkup(rule = null) {
 
       <label class="toggle-row">
         <input name="is_enabled" type="checkbox"${data.is_enabled ? " checked" : ""} />
-        <span>Keep this schedule enabled</span>
+        <span>${lang("Держать включённым", "Keep this schedule enabled")}</span>
       </label>
 
       <div class="inline-actions">
-        <button class="primary-button" type="submit">${rule ? "Save schedule" : "Create schedule"}</button>
+        <button class="primary-button" type="submit">${rule ? lang("Сохранить расписание", "Save schedule") : lang("Создать расписание", "Create schedule")}</button>
         ${
           rule
-            ? `<button class="danger-button" type="button" id="schedule-delete-button">Delete schedule</button>`
+            ? `<button class="danger-button" type="button" id="schedule-delete-button">${lang("Удалить расписание", "Delete schedule")}</button>`
             : ""
         }
       </div>
@@ -1822,24 +1958,24 @@ function scheduleFormMarkup(rule = null) {
 
 function renderSchedulesScreen() {
   setHeader({
-    kicker: "Schedules",
-    title: "Schedules",
-    subtitle: "Create routines without touching raw JSON.",
+    kicker: lang("Расписания", "Schedules"),
+    title: lang("Расписания", "Schedules"),
+    subtitle: lang("Собирай расписания без raw JSON.", "Create routines without touching raw JSON."),
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Schedules</p>
-            <h2>${state.rules.length ? "Choose a schedule" : "No schedules yet"}</h2>
+            <p class="section-kicker">${lang("Расписания", "Schedules")}</p>
+            <h2>${state.rules.length ? lang("Выбери расписание", "Choose a schedule") : lang("Расписаний пока нет", "No schedules yet")}</h2>
           </div>
-          <button class="primary-button" type="button" data-open-screen="add-schedule">Add schedule</button>
+          <button class="primary-button" type="button" data-open-screen="add-schedule">${lang("Добавить расписание", "Add schedule")}</button>
         </div>
         ${
           state.rules.length
             ? `<div class="list-grid">${state.rules.map((rule) => ruleCardMarkup(rule)).join("")}</div>`
-            : '<div class="empty-state">Create your first delay, recurring, once, or astronomical routine.</div>'
+            : `<div class="empty-state">${lang("Создай первое правило: задержка, один раз, повтор или астрономическое.", "Create your first delay, recurring, once, or astronomical routine.")}</div>`
         }
       </section>
     </div>
@@ -1855,17 +1991,17 @@ function renderScheduleEditorScreen(ruleId = null) {
     return;
   }
   setHeader({
-    kicker: "Schedule",
-    title: rule ? rule.name : "New schedule",
-    subtitle: rule ? describeRule(rule) : "Build a new routine with normal form controls.",
+    kicker: lang("Расписание", "Schedule"),
+    title: rule ? rule.name : lang("Новое расписание", "New schedule"),
+    subtitle: rule ? describeRule(rule) : lang("Собери новое расписание через обычную форму.", "Build a new routine with normal form controls."),
   });
   setContent(`
     <div class="screen-stack">
       <section class="form-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">${rule ? "Edit" : "Create"}</p>
-            <h3>${rule ? "Update this schedule" : "New schedule"}</h3>
+            <p class="section-kicker">${rule ? lang("Редактирование", "Edit") : lang("Создание", "Create")}</p>
+            <h3>${rule ? lang("Обновить расписание", "Update this schedule") : lang("Новое расписание", "New schedule")}</h3>
           </div>
         </div>
         ${scheduleFormMarkup(rule)}
@@ -1881,39 +2017,39 @@ function linkFormMarkup(link = null) {
     <form id="link-form" class="form-stack">
       <div class="field-grid">
         <label class="field">
-          <span>Name</span>
-          <input name="name" value="${escapeHtml(data.name)}" placeholder="Desk tap on" required />
+          <span>${lang("Название", "Name")}</span>
+          <input name="name" value="${escapeHtml(data.name)}" placeholder="${lang("Включить стол", "Desk tap on")}" required />
         </label>
         <label class="field">
-          <span>Target type</span>
+          <span>${lang("Тип цели", "Target type")}</span>
           <select name="target_type" id="link-target-type">
-            <option value="device"${data.target_type === "device" ? " selected" : ""}>Device</option>
-            <option value="group"${data.target_type === "group" ? " selected" : ""}>Group</option>
-            <option value="scene"${data.target_type === "scene" ? " selected" : ""}>Scene</option>
+            <option value="device"${data.target_type === "device" ? " selected" : ""}>${lang("Устройство", "Device")}</option>
+            <option value="group"${data.target_type === "group" ? " selected" : ""}>${lang("Группа", "Group")}</option>
+            <option value="scene"${data.target_type === "scene" ? " selected" : ""}>${lang("Сцена", "Scene")}</option>
           </select>
         </label>
         <label class="field">
-          <span>Target</span>
+          <span>${lang("Цель", "Target")}</span>
           <select name="target_id" id="link-target-id">${targetOptionsMarkup(data.target_type, data.target_id)}</select>
         </label>
         <label class="field">
-          <span>Action</span>
+          <span>${lang("Действие", "Action")}</span>
           <select name="action_type" id="link-action-type">${linkActionOptionsMarkup(data.target_type, data.action_type)}</select>
         </label>
       </div>
       <label class="toggle-row">
         <input name="requires_confirmation" type="checkbox"${data.requires_confirmation ? " checked" : ""} />
-        <span>Ask before running the link</span>
+        <span>${lang("Спрашивать перед запуском ссылки", "Ask before running the link")}</span>
       </label>
       <label class="toggle-row">
         <input name="is_enabled" type="checkbox"${data.is_enabled ? " checked" : ""} />
-        <span>Keep this link enabled</span>
+        <span>${lang("Держать ссылку включённой", "Keep this link enabled")}</span>
       </label>
       <div class="inline-actions">
-        <button class="primary-button" type="submit">${link ? "Save link" : "Create link"}</button>
+        <button class="primary-button" type="submit">${link ? lang("Сохранить ссылку", "Save link") : lang("Создать ссылку", "Create link")}</button>
         ${
           link
-            ? `<button class="danger-button" type="button" id="link-delete-button">Delete link</button>`
+            ? `<button class="danger-button" type="button" id="link-delete-button">${lang("Удалить ссылку", "Delete link")}</button>`
             : ""
         }
       </div>
@@ -1923,24 +2059,24 @@ function linkFormMarkup(link = null) {
 
 function renderLinksScreen() {
   setHeader({
-    kicker: "Links",
-    title: "Action links",
-    subtitle: "Create local shortcuts that can later sit behind NFC tags.",
+    kicker: lang("Ссылки", "Links"),
+    title: lang("Ссылки действия", "Action links"),
+    subtitle: lang("Собирай локальные ярлыки, которые потом можно повесить на NFC.", "Create local shortcuts that can later sit behind NFC tags."),
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Links</p>
-            <h2>${state.actionLinks.length ? "Choose a link" : "No links yet"}</h2>
+            <p class="section-kicker">${lang("Ссылки", "Links")}</p>
+            <h2>${state.actionLinks.length ? lang("Выбери ссылку", "Choose a link") : lang("Ссылок пока нет", "No links yet")}</h2>
           </div>
-          <button class="primary-button" type="button" data-open-screen="add-link">Add link</button>
+          <button class="primary-button" type="button" data-open-screen="add-link">${lang("Добавить ссылку", "Add link")}</button>
         </div>
         ${
           state.actionLinks.length
             ? `<div class="list-grid">${state.actionLinks.map((link) => linkCardMarkup(link)).join("")}</div>`
-            : '<div class="empty-state">Create a local link when you want a one-tap phone or NFC shortcut.</div>'
+            : `<div class="empty-state">${lang("Создай локальную ссылку для one-tap запуска с телефона или NFC.", "Create a local link when you want a one-tap phone or NFC shortcut.")}</div>`
         }
       </section>
     </div>
@@ -1957,22 +2093,22 @@ function renderLinkEditorScreen(linkId = null) {
   }
   const href = link ? `${window.location.origin}/a/${link.token}` : "";
   setHeader({
-    kicker: "Link",
-    title: link ? link.name : "New action link",
-    subtitle: link ? "Update this local shortcut." : "Create a new local shortcut.",
+    kicker: lang("Ссылка", "Link"),
+    title: link ? link.name : lang("Новая ссылка", "New action link"),
+    subtitle: link ? lang("Обнови этот локальный ярлык.", "Update this local shortcut.") : lang("Создай новый локальный ярлык.", "Create a new local shortcut."),
   });
   setContent(`
     <div class="screen-stack">
       ${
         link
-          ? `<section class="screen-card"><div class="section-head"><div><p class="section-kicker">Shortcut</p><h2>Use this link</h2></div></div><div class="details-panel"><div class="helper-line mono">${escapeHtml(href)}</div><div class="inline-actions"><a class="primary-button" href="${escapeHtml(href)}">${link.requires_confirmation ? "Review" : "Run now"}</a><button class="pill-button" type="button" id="copy-link-button">Copy URL</button></div></div></section>`
+          ? `<section class="screen-card"><div class="section-head"><div><p class="section-kicker">${lang("Ссылка", "Shortcut")}</p><h2>${lang("Открыть ссылку", "Use this link")}</h2></div></div><div class="details-panel"><div class="helper-line mono">${escapeHtml(href)}</div><div class="inline-actions"><a class="primary-button" href="${escapeHtml(href)}">${link.requires_confirmation ? lang("Проверить", "Review") : lang("Запустить сейчас", "Run now")}</a><button class="pill-button" type="button" id="copy-link-button">${lang("Скопировать URL", "Copy URL")}</button></div></div></section>`
           : ""
       }
       <section class="form-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">${link ? "Edit" : "Create"}</p>
-            <h3>${link ? "Update link" : "New link"}</h3>
+            <p class="section-kicker">${link ? lang("Редактирование", "Edit") : lang("Создание", "Create")}</p>
+            <h3>${link ? lang("Обновить ссылку", "Update link") : lang("Новая ссылка", "New link")}</h3>
           </div>
         </div>
         ${linkFormMarkup(link)}
@@ -1986,10 +2122,10 @@ function candidateCardMarkup(candidate, mode) {
   const existing = state.devices.find((device) => device.ble_identifier === candidate.ble_identifier);
   const subtitle =
     mode === "supported"
-      ? `Likely ${candidate.family} light nearby`
+      ? lang(`Похоже на ${candidate.family} рядом`, `Likely ${candidate.family} light nearby`)
       : mode === "existing"
-        ? `${existing?.name || candidate.name} is already onboarded`
-        : "Unsupported or unknown BLE device";
+        ? lang(`${existing?.name || candidate.name} уже добавлен(а)`, `${existing?.name || candidate.name} is already onboarded`)
+        : lang("Неподдерживаемое или неизвестное BLE-устройство", "Unsupported or unknown BLE device");
   return `
     <article class="mini-card">
       <div class="card-head">
@@ -2003,13 +2139,13 @@ function candidateCardMarkup(candidate, mode) {
         </div>
         ${
           mode === "supported"
-            ? `<button class="primary-button" type="button" data-select-candidate="${escapeHtml(candidate.ble_identifier)}">Add</button>`
+            ? `<button class="primary-button" type="button" data-select-candidate="${escapeHtml(candidate.ble_identifier)}">${lang("Добавить", "Add")}</button>`
             : ""
         }
       </div>
       ${
         mode === "other"
-          ? `<div class="helper-line mono">${escapeHtml(candidate.classification_reason || "No classification details")}</div>`
+          ? `<div class="helper-line mono">${escapeHtml(candidate.classification_reason || lang("Нет деталей классификации", "No classification details"))}</div>`
           : ""
       }
     </article>
@@ -2020,21 +2156,21 @@ function renderAddDeviceScreen() {
   const groups = discoveryGroups();
   const selected = state.selectedCandidate;
   setHeader({
-    kicker: "Add light",
-    title: "Discovery",
-    subtitle: "Scan for supported lights and onboard them without drowning in BLE noise.",
+    kicker: lang("Добавить свет", "Add light"),
+    title: lang("Обнаружение", "Discovery"),
+    subtitle: lang("Сканируй поддерживаемый свет и добавляй его без BLE-шума.", "Scan for supported lights and onboard them without drowning in BLE noise."),
   });
   setContent(`
     <div class="screen-stack">
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">Discovery</p>
-            <h2>Find lights nearby</h2>
+            <p class="section-kicker">${lang("Обнаружение", "Discovery")}</p>
+            <h2>${lang("Найди свет рядом", "Find lights nearby")}</h2>
           </div>
-          <button class="primary-button" type="button" data-action="scan">Scan for lights</button>
+          <button class="primary-button" type="button" data-action="scan">${lang("Сканировать свет", "Scan for lights")}</button>
         </div>
-        <p class="body-copy" data-role="discovery-status">${state.discovery ? "Latest scan is ready." : "No scan yet. Start here when a light is powered nearby."}</p>
+        <p class="body-copy" data-role="discovery-status">${state.discovery ? lang("Последний скан уже готов.", "Latest scan is ready.") : lang("Скана ещё не было. Начни отсюда, когда рядом включён свет.", "No scan yet. Start here when a light is powered nearby.")}</p>
       </section>
 
       ${
@@ -2043,24 +2179,24 @@ function renderAddDeviceScreen() {
             <section class="form-card">
               <div class="section-head compact">
                 <div>
-                  <p class="section-kicker">Selected</p>
+                  <p class="section-kicker">${lang("Выбрано", "Selected")}</p>
                   <h3>${escapeHtml(selected.name)}</h3>
                 </div>
-                <button class="ghost-button" type="button" id="clear-candidate-button">Cancel</button>
+                <button class="ghost-button" type="button" id="clear-candidate-button">${lang("Сбросить", "Cancel")}</button>
               </div>
               <form id="device-onboarding-form" class="form-stack">
                 <div class="field-grid">
                   <label class="field">
-                    <span>Name</span>
+                    <span>${lang("Название", "Name")}</span>
                     <input name="name" value="${escapeHtml(selected.name)}" required />
                   </label>
                   <label class="field">
-                    <span>Room</span>
-                    <select name="room_id">${roomOptionsMarkup("", { allowBlank: true, blankLabel: "No room yet" })}</select>
+                    <span>${lang("Комната", "Room")}</span>
+                    <select name="room_id">${roomOptionsMarkup("", { allowBlank: true, blankLabel: lang("Пока без комнаты", "No room yet") })}</select>
                   </label>
                 </div>
                 <div class="inline-actions">
-                  <button class="primary-button" type="submit">Add light</button>
+                  <button class="primary-button" type="submit">${lang("Добавить свет", "Add light")}</button>
                 </div>
               </form>
             </section>
@@ -2071,32 +2207,32 @@ function renderAddDeviceScreen() {
       <section class="screen-card">
         <div class="section-head">
           <div>
-            <p class="section-kicker">New supported devices</p>
-            <h2>${groups.supported.length ? "Ready to add" : "Nothing new yet"}</h2>
+            <p class="section-kicker">${lang("Новые поддерживаемые устройства", "New supported devices")}</p>
+            <h2>${groups.supported.length ? lang("Готово к добавлению", "Ready to add") : lang("Пока ничего нового", "Nothing new yet")}</h2>
           </div>
         </div>
         ${
           groups.supported.length
             ? `<div class="mini-stack">${groups.supported.map((candidate) => candidateCardMarkup(candidate, "supported")).join("")}</div>`
-            : '<div class="empty-state">No new supported lights found in the last scan.</div>'
+            : `<div class="empty-state">${lang("В последнем скане новых поддерживаемых ламп не найдено.", "No new supported lights found in the last scan.")}</div>`
         }
       </section>
 
       <section class="details-wrap">
         <details class="details-panel">
-          <summary>Already added devices</summary>
+          <summary>${lang("Уже добавленные устройства", "Already added devices")}</summary>
           ${
             groups.existing.length
               ? `<div class="mini-stack">${groups.existing.map((candidate) => candidateCardMarkup(candidate, "existing")).join("")}</div>`
-              : '<div class="helper-line">No onboarded lights were seen in the last scan.</div>'
+              : `<div class="helper-line">${lang("В последнем скане уже добавленный свет не попался.", "No onboarded lights were seen in the last scan.")}</div>`
           }
         </details>
         <details class="details-panel">
-          <summary>Other / unsupported BLE devices</summary>
+          <summary>${lang("Другие / неподдерживаемые BLE-устройства", "Other / unsupported BLE devices")}</summary>
           ${
             groups.other.length
               ? `<div class="mini-stack">${groups.other.map((candidate) => candidateCardMarkup(candidate, "other")).join("")}</div>`
-              : '<div class="helper-line">No unsupported BLE noise showed up in the last scan.</div>'
+              : `<div class="helper-line">${lang("В последнем скане BLE-шум не мешал.", "No unsupported BLE noise showed up in the last scan.")}</div>`
           }
         </details>
       </section>
@@ -2107,9 +2243,9 @@ function renderAddDeviceScreen() {
 
 function renderAddRoomScreen(prefill = {}) {
   setHeader({
-    kicker: "Add room",
-    title: "New room",
-    subtitle: "Create a room so the everyday UI has somewhere sensible to land.",
+    kicker: lang("Добавить комнату", "Add room"),
+    title: lang("Новая комната", "New room"),
+    subtitle: lang("Создай комнату, чтобы everyday UI было куда складывать свет.", "Create a room so the everyday UI has somewhere sensible to land."),
   });
   setContent(`
     <div class="screen-stack">
@@ -2117,15 +2253,15 @@ function renderAddRoomScreen(prefill = {}) {
         <form id="room-create-form" class="form-stack">
           <div class="field-grid">
             <label class="field">
-              <span>Name</span>
-              <input name="name" placeholder="Living room" value="${escapeHtml(prefill.name || "")}" required />
+              <span>${lang("Название", "Name")}</span>
+              <input name="name" placeholder="${lang("Гостиная", "Living room")}" value="${escapeHtml(prefill.name || "")}" required />
             </label>
             <label class="field">
-              <span>Sort order</span>
+              <span>${lang("Порядок", "Sort order")}</span>
               <input name="sort_order" type="number" value="${prefill.sort_order || 0}" />
             </label>
           </div>
-          <button class="primary-button" type="submit">Create room</button>
+          <button class="primary-button" type="submit">${lang("Создать комнату", "Create room")}</button>
         </form>
       </section>
     </div>
@@ -2138,7 +2274,7 @@ function renderAddRoomScreen(prefill = {}) {
       headers: jsonHeaders,
       body: JSON.stringify({ name: data.name, sort_order: Number(data.sort_order || 0) }),
     });
-    showToast("Room created");
+    showToast(lang("Комната создана", "Room created"));
     await refreshAll({ silent: true });
     openScreen("room-detail", { roomId: room.id }, { replace: true });
   });
@@ -2146,9 +2282,9 @@ function renderAddRoomScreen(prefill = {}) {
 
 function renderAddGroupScreen(prefill = {}) {
   setHeader({
-    kicker: "Add group",
-    title: "New group",
-    subtitle: "Build a mixed-family control group from the lights you already onboarded.",
+    kicker: lang("Добавить группу", "Add group"),
+    title: lang("Новая группа", "New group"),
+    subtitle: lang("Собери mixed-family группу из уже добавленного света.", "Build a mixed-family control group from the lights you already onboarded."),
   });
   setContent(`
     <div class="screen-stack">
@@ -2156,15 +2292,15 @@ function renderAddGroupScreen(prefill = {}) {
         <form id="group-create-form" class="form-stack">
           <div class="field-grid">
             <label class="field">
-              <span>Name</span>
-              <input name="name" placeholder="Desk + shelf" required />
+              <span>${lang("Название", "Name")}</span>
+              <input name="name" placeholder="${lang("Стол + полка", "Desk + shelf")}" required />
             </label>
             <label class="field">
-              <span>Room</span>
-              <select name="room_id">${roomOptionsMarkup(prefill.roomId || "", { allowBlank: true, blankLabel: "No room" })}</select>
+              <span>${lang("Комната", "Room")}</span>
+              <select name="room_id">${roomOptionsMarkup(prefill.roomId || "", { allowBlank: true, blankLabel: lang("Без комнаты", "No room") })}</select>
             </label>
           </div>
-          <button class="primary-button" type="submit">Create group</button>
+          <button class="primary-button" type="submit">${lang("Создать группу", "Create group")}</button>
         </form>
       </section>
     </div>
@@ -2177,7 +2313,7 @@ function renderAddGroupScreen(prefill = {}) {
       headers: jsonHeaders,
       body: JSON.stringify({ name: data.name, room_id: data.room_id ? Number(data.room_id) : null }),
     });
-    showToast("Group created");
+    showToast(lang("Группа создана", "Group created"));
     await refreshAll({ silent: true });
     openScreen("group-detail", { groupId: group.id }, { replace: true });
   });
@@ -2185,9 +2321,9 @@ function renderAddGroupScreen(prefill = {}) {
 
 function renderAddSceneScreen(prefill = {}) {
   setHeader({
-    kicker: "Add scene",
-    title: "New scene",
-    subtitle: "Create the shell, then add actual device or group actions right here.",
+    kicker: lang("Добавить сцену", "Add scene"),
+    title: lang("Новая сцена", "New scene"),
+    subtitle: lang("Создай сцену и сразу добавляй в неё действия устройств или групп.", "Create the shell, then add actual device or group actions right here."),
   });
   setContent(`
     <div class="screen-stack">
@@ -2195,15 +2331,15 @@ function renderAddSceneScreen(prefill = {}) {
         <form id="scene-create-form" class="form-stack">
           <div class="field-grid">
             <label class="field">
-              <span>Name</span>
-              <input name="name" placeholder="Movie mode" required />
+              <span>${lang("Название", "Name")}</span>
+              <input name="name" placeholder="${lang("Кино", "Movie mode")}" required />
             </label>
             <label class="field">
-              <span>Room</span>
-              <select name="room_id">${roomOptionsMarkup(prefill.roomId || "", { allowBlank: true, blankLabel: "No room" })}</select>
+              <span>${lang("Комната", "Room")}</span>
+              <select name="room_id">${roomOptionsMarkup(prefill.roomId || "", { allowBlank: true, blankLabel: lang("Без комнаты", "No room") })}</select>
             </label>
           </div>
-          <button class="primary-button" type="submit">Create scene</button>
+          <button class="primary-button" type="submit">${lang("Создать сцену", "Create scene")}</button>
         </form>
       </section>
     </div>
@@ -2216,7 +2352,7 @@ function renderAddSceneScreen(prefill = {}) {
       headers: jsonHeaders,
       body: JSON.stringify({ name: data.name, room_id: data.room_id ? Number(data.room_id) : null }),
     });
-    showToast("Scene created");
+    showToast(lang("Сцена создана", "Scene created"));
     await refreshAll({ silent: true });
     openScreen("scene-detail", { sceneId: scene.id }, { replace: true });
   });
@@ -2298,6 +2434,267 @@ function renderCurrentScreen() {
 function renderScreen() {
   applyChromeCopy();
   renderCurrentScreen();
+  localizeCurrentScreen();
+}
+
+function setNodeText(selector, value) {
+  const node = els.content.querySelector(selector);
+  if (node) node.textContent = value;
+}
+
+function setNodeHtml(selector, value) {
+  const node = els.content.querySelector(selector);
+  if (node) node.innerHTML = value;
+}
+
+const TEXT_REPLACEMENTS = [
+  ["Все комнаты", "All rooms"],
+  ["Быстрый доступ", "Quick access"],
+  ["Разделы", "Sections"],
+  ["Комнаты", "Rooms"],
+  ["Устройства", "Devices"],
+  ["Группы", "Groups"],
+  ["Сцены", "Scenes"],
+  ["Расписания", "Schedules"],
+  ["Ссылки", "Links"],
+  ["Добавить свет", "Add light"],
+  ["Добавить группу", "Add group"],
+  ["Добавить сцену", "Add scene"],
+  ["Добавить расписание", "Add schedule"],
+  ["Добавить ссылку", "Add link"],
+  ["Выбери устройство", "Choose a light"],
+  ["Устройств пока нет", "No lights yet"],
+  ["Выбери группу", "Choose a group"],
+  ["Выбери сцену", "Choose a scene"],
+  ["Выбери расписание", "Choose a schedule"],
+  ["Выбери ссылку", "Choose a link"],
+  ["Открыть", "Open"],
+  ["Включить", "Turn on"],
+  ["Выключить", "Turn off"],
+  ["Применить", "Apply"],
+  ["Покрасить", "Tint"],
+  ["Яркость", "Brightness"],
+  ["Цвет", "Color"],
+  ["Настройки", "Settings"],
+  ["Название", "Name"],
+  ["Комната", "Room"],
+  ["Порядок", "Sort order"],
+  ["Сохранить", "Save"],
+  ["Удалить комнату", "Delete room"],
+  ["Удалить устройство", "Delete device"],
+  ["Новая группа", "New group"],
+  ["Новая сцена", "New scene"],
+  ["Свет", "Lights"],
+  ["В этой комнате", "In this room"],
+  ["Света пока нет", "No lights yet"],
+  ["Открыть список", "Open list"],
+  ["Вкл", "On"],
+  ["Выкл", "Off"],
+  ["Без комнаты", "No room"],
+  ["Свет без комнаты", "Unassigned lights"],
+  ["Назначить", "Assign"],
+  ["Есть неразобранный свет", "Lights without a room"],
+  ["Добавить свет", "Add light"],
+  ["Обзор", "Overview"],
+  ["Главная", "Home"],
+  ["Свет без комнаты", "Unassigned lights"],
+];
+
+const EXTRA_TEXT_REPLACEMENTS = [
+  ["Группы комнаты", "Room groups"],
+  ["Групп пока нет", "No groups yet"],
+  ["В этой комнате пока нет групп.", "No groups attached to this room yet."],
+  ["Сцены комнаты", "Room scenes"],
+  ["Сцен пока нет", "No scenes yet"],
+  ["В этой комнате пока нет сцен.", "No scenes attached to this room yet."],
+  ["Сначала подтверждение", "Confirm first"],
+  ["Сразу", "Instant"],
+  ["Проверить", "Review"],
+  ["Запустить", "Run"],
+  ["Запустить сейчас", "Run now"],
+  ["Скопировать URL", "Copy URL"],
+  ["Ссылка", "Shortcut"],
+  ["Открыть ссылку", "Use this link"],
+  ["Держать включённым", "Keep this schedule enabled"],
+  ["Расписаний пока нет", "No schedules yet"],
+  ["Ссылок пока нет", "No links yet"],
+  ["Создать комнату", "Create room"],
+  ["Создать группу", "Create group"],
+  ["Создать сцену", "Create scene"],
+  ["Создать расписание", "Create schedule"],
+  ["Создать ссылку", "Create link"],
+  ["Сохранить расписание", "Save schedule"],
+  ["Сохранить ссылку", "Save link"],
+  ["Удалить группу", "Delete group"],
+  ["Удалить сцену", "Delete scene"],
+  ["Удалить расписание", "Delete schedule"],
+  ["Удалить ссылку", "Delete link"],
+  ["Настройки", "Settings"],
+  ["Участники", "Members"],
+  ["Текущие участники", "Current members"],
+  ["Подключённый свет", "Attached lights"],
+  ["Участников пока нет", "No members yet"],
+  ["Добавить свет", "Add a light"],
+  ["Свет", "Light"],
+  ["Больше нечего добавлять", "No more lights to add"],
+  ["Убрать", "Remove"],
+  ["Собрать действия", "Build actions"],
+  ["Добавить шаг", "Add a step"],
+  ["Текущие шаги сцены", "Current scene steps"],
+  ["Действий пока нет", "No actions yet"],
+  ["Держать сцену включённой", "Keep this scene enabled"],
+  ["Сохранить сцену", "Save scene"],
+  ["Сохранить группу", "Save group"],
+  ["Новое расписание", "New schedule"],
+  ["Новая ссылка", "New action link"],
+  ["Ссылки действия", "Action links"],
+  ["Новые поддерживаемые устройства", "New supported devices"],
+  ["Готово к добавлению", "Ready to add"],
+  ["Пока ничего нового", "Nothing new yet"],
+  ["Последний скан уже готов.", "Latest scan is ready."],
+  ["Скана ещё не было. Начни отсюда, когда рядом включён свет.", "No scan yet. Start here when a light is powered nearby."],
+  ["Уже добавленные устройства", "Already added devices"],
+  ["Другие / неподдерживаемые BLE-устройства", "Other / unsupported BLE devices"],
+];
+
+function applyTextReplacements() {
+  const map = new Map(
+    [...TEXT_REPLACEMENTS, ...EXTRA_TEXT_REPLACEMENTS].map(([ru, en]) =>
+      state.locale === "en" ? [ru, en] : [en, ru],
+    ),
+  );
+  const nodes = els.content.querySelectorAll("button, p, h2, h3, strong, span, a, summary, label");
+  nodes.forEach((node) => {
+    if (node.children.length) return;
+    const text = node.textContent?.trim();
+    if (!text) return;
+    const dynamicReplacement = localizeDynamicText(text);
+    if (dynamicReplacement) {
+      node.textContent = dynamicReplacement;
+      return;
+    }
+    const replacement = map.get(text);
+    if (replacement) {
+      node.textContent = replacement;
+    }
+  });
+}
+
+function localizeCurrentScreen() {
+  const screen = currentScreen().name;
+  els.pageTitle.textContent = "DILIAT";
+  els.pageSubtitle.textContent = "";
+  els.pageSubtitle.classList.add("is-hidden");
+
+  if (screen === "home") {
+    els.pageKicker.textContent = lang("Главная", "Home");
+    setNodeText(".section-head .section-kicker", lang("Обзор", "Overview"));
+    setNodeText(".section-head h2", lang("Разделы", "Sections"));
+    const overview = [...els.content.querySelectorAll(".overview-card")];
+    const labels = [
+      lang("Комнаты", "Rooms"),
+      lang("Устройства", "Devices"),
+      lang("Группы", "Groups"),
+      lang("Сцены", "Scenes"),
+      lang("Расписания", "Schedules"),
+      lang("Ссылки", "Links"),
+    ];
+    overview.forEach((card, index) => {
+      const kicker = card.querySelector(".section-kicker");
+      const note = card.querySelector("span");
+      if (kicker) kicker.textContent = labels[index] || kicker.textContent;
+      if (note) note.textContent = "";
+    });
+    const heads = els.content.querySelectorAll(".screen-card .section-head");
+    if (heads[1]) {
+      const kicker = heads[1].querySelector(".section-kicker");
+      const title = heads[1].querySelector("h2");
+      const button = heads[1].querySelector("button");
+      if (kicker) kicker.textContent = lang("Комнаты", "Rooms");
+      if (title) title.textContent = lang("Быстрый доступ", "Quick access");
+      if (button) button.textContent = lang("Все комнаты", "All rooms");
+    }
+  }
+
+  if (screen === "rooms") {
+    els.pageKicker.textContent = lang("Комнаты", "Rooms");
+    setNodeText(".details-panel .section-kicker", lang("Без комнаты", "Unassigned"));
+    setNodeText(".details-panel h3", lang("Есть неразобранный свет", "Lights without a room"));
+    const assignButton = els.content.querySelector('.details-panel button[data-open-screen="devices-unassigned"]');
+    if (assignButton) assignButton.textContent = lang("Назначить", "Assign");
+  }
+
+  if (screen === "devices" || screen === "devices-room" || screen === "devices-unassigned") {
+    els.pageKicker.textContent = lang("Устройства", "Devices");
+    const head = els.content.querySelector(".section-head");
+    if (head) {
+      const kicker = head.querySelector(".section-kicker");
+      const title = head.querySelector("h2");
+      const button = head.querySelector("button");
+      if (kicker) kicker.textContent = lang("Свет", "Lights");
+      if (button) button.textContent = lang("Добавить свет", "Add light");
+      if (title) {
+        title.textContent = lang(
+          title.textContent.includes("нет") ? "Устройств пока нет" : "Выбери устройство",
+          title.textContent.includes("No") ? "No lights yet" : "Choose a light",
+        );
+      }
+    }
+  }
+
+  if (screen === "groups") {
+    els.pageKicker.textContent = lang("Группы", "Groups");
+    const head = els.content.querySelector(".section-head");
+    if (head) {
+      const kicker = head.querySelector(".section-kicker");
+      const title = head.querySelector("h2");
+      const button = head.querySelector("button");
+      if (kicker) kicker.textContent = lang("Группы", "Groups");
+      if (button) button.textContent = lang("Добавить группу", "Add group");
+      if (title) title.textContent = lang("Выбери группу", "Choose a group");
+    }
+  }
+
+  if (screen === "scenes") {
+    els.pageKicker.textContent = lang("Сцены", "Scenes");
+    const head = els.content.querySelector(".section-head");
+    if (head) {
+      const kicker = head.querySelector(".section-kicker");
+      const title = head.querySelector("h2");
+      const button = head.querySelector("button");
+      if (kicker) kicker.textContent = lang("Сцены", "Scenes");
+      if (button) button.textContent = lang("Добавить сцену", "Add scene");
+      if (title) title.textContent = lang("Выбери сцену", "Choose a scene");
+    }
+  }
+
+  if (screen === "schedules") {
+    els.pageKicker.textContent = lang("Расписания", "Schedules");
+    const head = els.content.querySelector(".section-head");
+    if (head) {
+      const kicker = head.querySelector(".section-kicker");
+      const title = head.querySelector("h2");
+      const button = head.querySelector("button");
+      if (kicker) kicker.textContent = lang("Расписания", "Schedules");
+      if (button) button.textContent = lang("Добавить расписание", "Add schedule");
+      if (title) title.textContent = lang("Выбери расписание", "Choose a schedule");
+    }
+  }
+
+  if (screen === "links") {
+    els.pageKicker.textContent = lang("Ссылки", "Links");
+    const head = els.content.querySelector(".section-head");
+    if (head) {
+      const kicker = head.querySelector(".section-kicker");
+      const title = head.querySelector("h2");
+      const button = head.querySelector("button");
+      if (kicker) kicker.textContent = lang("Ссылки", "Links");
+      if (button) button.textContent = lang("Добавить ссылку", "Add link");
+      if (title) title.textContent = lang("Выбери ссылку", "Choose a link");
+    }
+  }
+
+  applyTextReplacements();
 }
 
 function bindOverviewCards() {
@@ -2393,7 +2790,7 @@ function bindSceneCards() {
   els.content.querySelectorAll("[data-run-scene]").forEach((button) => {
     button.addEventListener("click", async () => {
       await handleSceneRun(Number(button.dataset.runScene));
-      showToast("Scene ran");
+      showToast(lang("Сцена запущена", "Scene ran"));
     });
   });
 }
@@ -2440,7 +2837,7 @@ function bindSceneActionForm(scene) {
       }),
     });
     await refreshAll({ silent: true });
-    showToast("Scene action added");
+    showToast(lang("Действие сцены добавлено", "Scene action added"));
   });
 }
 
@@ -2454,7 +2851,7 @@ function bindRuleCards() {
       const rule = state.rules.find((item) => item.id === ruleId);
       await api(`/api/rules/${ruleId}/${rule.is_enabled ? "disable" : "enable"}`, { method: "POST" });
       await refreshAll({ silent: true });
-      showToast(rule.is_enabled ? "Schedule disabled" : "Schedule enabled");
+      showToast(rule.is_enabled ? lang("Расписание выключено", "Schedule disabled") : lang("Расписание включено", "Schedule enabled"));
     });
   });
 }
@@ -2528,7 +2925,7 @@ function bindScheduleForm(rule) {
         headers: jsonHeaders,
         body: JSON.stringify(body),
       });
-      showToast("Schedule updated");
+    showToast(lang("Расписание обновлено", "Schedule updated"));
       await refreshAll({ silent: true });
     } else {
       const created = await api("/api/rules", {
@@ -2536,7 +2933,7 @@ function bindScheduleForm(rule) {
         headers: jsonHeaders,
         body: JSON.stringify(body),
       });
-      showToast("Schedule created");
+    showToast(lang("Расписание создано", "Schedule created"));
       await refreshAll({ silent: true });
       openScreen("schedule-detail", { ruleId: created.id }, { replace: true });
     }
@@ -2545,9 +2942,9 @@ function bindScheduleForm(rule) {
   const deleteButton = els.content.querySelector("#schedule-delete-button");
   if (deleteButton && rule) {
     deleteButton.addEventListener("click", async () => {
-      if (!window.confirm(`Delete schedule "${rule.name}"?`)) return;
+    if (!window.confirm(lang(`Удалить расписание "${rule.name}"?`, `Delete schedule "${rule.name}"?`))) return;
       await api(`/api/rules/${rule.id}`, { method: "DELETE" });
-      showToast("Schedule deleted");
+    showToast(lang("Расписание удалено", "Schedule deleted"));
       openScreen("schedules", {}, { replace: true });
       await refreshAll({ silent: true });
     });
@@ -2593,7 +2990,7 @@ function bindLinkForm(link) {
         headers: jsonHeaders,
         body: JSON.stringify(body),
       });
-      showToast("Link updated");
+    showToast(lang("Ссылка обновлена", "Link updated"));
       await refreshAll({ silent: true });
     } else {
       const created = await api("/api/action-links", {
@@ -2601,7 +2998,7 @@ function bindLinkForm(link) {
         headers: jsonHeaders,
         body: JSON.stringify(body),
       });
-      showToast("Link created");
+    showToast(lang("Ссылка создана", "Link created"));
       await refreshAll({ silent: true });
       openScreen("link-detail", { linkId: created.id }, { replace: true });
     }
@@ -2612,7 +3009,7 @@ function bindLinkForm(link) {
     copyButton.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(`${window.location.origin}/a/${link.token}`);
-        showToast("Link copied");
+    showToast(lang("Ссылка скопирована", "Link copied"));
       } catch (error) {
         showToast(error.message, "error");
       }
@@ -2622,9 +3019,9 @@ function bindLinkForm(link) {
   const deleteButton = els.content.querySelector("#link-delete-button");
   if (deleteButton && link) {
     deleteButton.addEventListener("click", async () => {
-      if (!window.confirm(`Delete link "${link.name}"?`)) return;
+    if (!window.confirm(lang(`Удалить ссылку "${link.name}"?`, `Delete link "${link.name}"?`))) return;
       await api(`/api/action-links/${link.id}`, { method: "DELETE" });
-      showToast("Link deleted");
+    showToast(lang("Ссылка удалена", "Link deleted"));
       openScreen("links", {}, { replace: true });
       await refreshAll({ silent: true });
     });
@@ -2678,7 +3075,7 @@ function bindDiscoveryScreen() {
         }),
       });
       state.selectedCandidate = null;
-      showToast("Light added");
+    showToast(lang("Свет добавлен", "Light added"));
       await refreshAll({ silent: true });
       openScreen("device-detail", { deviceId: created.id }, { replace: true });
     });
@@ -2686,6 +3083,7 @@ function bindDiscoveryScreen() {
 }
 
 els.backButton.addEventListener("click", goBack);
+els.homeButton.addEventListener("click", goHome);
 els.refreshButton.addEventListener("click", () =>
   refreshAll().catch((error) => {
     console.error(error);

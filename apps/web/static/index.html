@@ -3,19 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Lights Hub</title>
+    <title>DILIAT</title>
     <link rel="stylesheet" href="/static/home.css?v=20260419c" />
   </head>
   <body>
     <main class="app-shell">
       <header class="app-topbar">
-        <button id="back-button" class="icon-button is-hidden" type="button" aria-label="Go back">Back</button>
-        <div class="title-block">
-          <p id="page-kicker" class="topbar-kicker">Local lights</p>
-          <h1 id="page-title">Lights Hub</h1>
-          <p id="page-subtitle" class="topbar-copy">Управление светом по комнатам на каждый день.</p>
+        <div class="topbar-nav">
+          <button id="back-button" class="icon-button is-hidden" type="button" aria-label="Назад">Назад</button>
+          <button id="home-button" class="icon-button is-hidden" type="button" aria-label="Главная">Главная</button>
         </div>
-        <button id="refresh-button" class="pill-button" type="button">Refresh</button>
+        <div class="title-block">
+          <p id="page-kicker" class="topbar-kicker">Локальный свет</p>
+          <h1 id="page-title">DILIAT</h1>
+          <p id="page-subtitle" class="topbar-copy is-hidden"></p>
+        </div>
+        <button id="refresh-button" class="pill-button" type="button">Обновить</button>
       </header>
 
       <div id="toast" class="toast is-hidden" role="status" aria-live="polite"></div>
@@ -36,7 +39,7 @@
           <button class="footer-toggle is-active" data-locale="ru" type="button">RU</button>
           <button class="footer-toggle" data-locale="en" type="button">EN</button>
         </div>
-        <a class="footer-link" href="/advanced">Advanced</a>
+        <a class="footer-link" href="/advanced">Расширенный</a>
       </footer>
     </main>
 
