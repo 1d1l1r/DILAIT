@@ -580,6 +580,10 @@ input[type="range"] {
   padding: 14px;
 }
 
+.room-grid + .details-panel {
+  margin-top: 16px;
+}
+
 .details-panel summary {
   cursor: pointer;
   color: var(--muted);
