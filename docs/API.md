@@ -1,5 +1,12 @@
 # API
 
+## UI routes
+
+- `GET /` - human-first everyday UI
+- `GET /advanced` - admin/debug UI
+
+Both screens are served by the same FastAPI app and use the same local backend state.
+
 ## Core control endpoints
 
 - `POST /api/devices/{device_id}/on`

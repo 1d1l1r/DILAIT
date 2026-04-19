@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.diliat.hub</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>cd __REPO_DIR__ &amp;&amp; DILIAT_HOST=0.0.0.0 DILIAT_PORT=8000 ./.venv/bin/python -m uvicorn apps.api.app.main:app --host 0.0.0.0 --port 8000</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_DIR__</string>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_DIR__/logs/launchd.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__REPO_DIR__/logs/launchd.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DILIAT_DEFAULT_TIMEZONE</key>
+        <string>Asia/Qyzylorda</string>
+    </dict>
+</dict>
+</plist>

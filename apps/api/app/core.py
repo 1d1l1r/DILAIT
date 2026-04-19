@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -15,15 +16,28 @@ STATIC_DIR = ROOT_DIR / "apps" / "web" / "static"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _get_env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
 @dataclass(slots=True)
 class Settings:
-    app_name: str = "Lights Hub"
+    app_name: str = os.getenv("DILIAT_APP_NAME", "Lights Hub")
     api_prefix: str = "/api"
-    default_timezone: str = "Asia/Qyzylorda"
-    database_url: str = f"sqlite+aiosqlite:///{(DATA_DIR / 'lights_hub.db').as_posix()}"
-    scheduler_poll_seconds: float = 1.0
-    ble_scan_timeout_seconds: float = 6.0
-    ble_connect_timeout_seconds: float = 8.0
+    default_timezone: str = os.getenv("DILIAT_DEFAULT_TIMEZONE", "Asia/Qyzylorda")
+    database_url: str = os.getenv(
+        "DILIAT_DATABASE_URL",
+        f"sqlite+aiosqlite:///{(DATA_DIR / 'lights_hub.db').as_posix()}",
+    )
+    scheduler_poll_seconds: float = _get_env_float("DILIAT_SCHEDULER_POLL_SECONDS", 1.0)
+    ble_scan_timeout_seconds: float = _get_env_float("DILIAT_BLE_SCAN_TIMEOUT_SECONDS", 6.0)
+    ble_connect_timeout_seconds: float = _get_env_float("DILIAT_BLE_CONNECT_TIMEOUT_SECONDS", 8.0)
 
     @property
     def tzinfo(self) -> ZoneInfo:

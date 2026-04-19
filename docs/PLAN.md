@@ -74,9 +74,21 @@ Sprint 6 is now implemented as a frontend information-architecture split:
 - schedules and action links now have human-friendly forms in `/` while reusing the same existing backend and action engine
 - the backend BLE/device capability surface remains unchanged; this sprint is intentionally UX-only on top of the validated core families
 
+## Release-prep status
+
+The MVP is now prepared for practical use on Windows and Mac mini:
+
+- root-level release-facing `README.md` now documents what the project is, how to run it, and how to reach it from a phone
+- Windows startup now has a simple helper path through `run_dev.bat`
+- Mac mini startup now has a simple helper path through `run_mac.sh`
+- Mac mini deployment guidance now covers Python setup, dependency install, startup, LAN access, persistence, and a simple `launchd` next step
+- configuration expectations are now documented through environment-variable notes and `.env.example`
+- SQLite persistence, backup, and machine-to-machine database copy guidance are now explicit
+- the recommended first release baseline is `v0.1.0`
+
 ## Next implementation slices
 
-1. Add richer inline editing for human-first scenes and schedules without drifting into raw admin UX.
-2. Improve everyday visibility for partial failures from mixed-family actions in the main mobile shell.
-3. Expand discovery heuristics for additional adjacent variants only when backed by real hardware validation.
-4. Improve state feedback where families expose reliable notification or readback paths.
+1. Improve everyday visibility for partial failures from mixed-family actions in the main mobile shell.
+2. Expand discovery heuristics for additional adjacent variants only when backed by real hardware validation.
+3. Improve state feedback where families expose reliable notification or readback paths.
+4. Package a later production-ready auto-start path only after real Mac mini uptime and BLE behavior are validated in daily use.
