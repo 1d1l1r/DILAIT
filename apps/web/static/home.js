@@ -121,7 +121,6 @@ function applyChromeCopy() {
   els.pageSubtitle.textContent = copy.subtitle;
   els.refreshButton.textContent = copy.refresh;
   els.backButton.textContent = copy.back;
-  document.querySelector(".footer-label").textContent = copy.footerLabel;
   document.querySelector(".footer-link").textContent = copy.advanced;
   els.dockButtons.forEach((button) => {
     button.textContent = copy.dock[button.dataset.addScreen] || button.textContent;

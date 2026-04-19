@@ -88,6 +88,11 @@ body {
   flex-wrap: wrap;
 }
 
+.hero-actions > .button {
+  width: auto;
+  min-width: 138px;
+}
+
 .compact-stack {
   gap: 8px;
 }
@@ -152,6 +157,10 @@ button {
   color: var(--text);
 }
 
+button {
+  appearance: none;
+}
+
 textarea {
   resize: vertical;
 }
@@ -173,6 +182,7 @@ textarea {
   background: var(--accent-soft);
   color: var(--accent-dark);
   border: 1px solid rgba(60, 217, 234, 0.18);
+  box-shadow: none;
 }
 
 .button-ghost {

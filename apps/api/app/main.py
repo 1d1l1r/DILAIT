@@ -99,6 +99,16 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+@app.middleware("http")
+async def disable_ui_cache(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path in {"/", "/advanced", "/advanced/"} or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 def _render_action_link_page(
     *,
     title: str,
@@ -198,13 +208,19 @@ def _render_action_link_page(
 
 @app.get("/")
 async def root() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(
+        STATIC_DIR / "index.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 
 @app.get("/advanced")
 @app.get("/advanced/")
 async def advanced() -> FileResponse:
-    return FileResponse(STATIC_DIR / "advanced.html")
+    return FileResponse(
+        STATIC_DIR / "advanced.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 
 @app.get("/a/{token}", response_class=HTMLResponse)
