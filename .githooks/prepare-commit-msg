@@ -1,0 +1,14 @@
+#!/bin/sh
+
+message_file="$1"
+
+rein="Co-authored-by: Rein Hard V <rein@dorozhk.in>"
+ronin="Co-authored-by: Bushid Ronin V <ronin@dorozhk.in>"
+
+grep -Fq "$rein" "$message_file" || {
+  printf '\n%s\n' "$rein" >> "$message_file"
+}
+
+grep -Fq "$ronin" "$message_file" || {
+  printf '%s\n' "$ronin" >> "$message_file"
+}
