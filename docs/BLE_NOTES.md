@@ -178,6 +178,8 @@
 
 - Live state readback is still optimistic in our app layer; we are not relying on notifications for authoritative state yet.
 - Visual confirmation of each command still depends on observing the physical strip; the terminal validation confirms successful BLE writes and successful scheduler execution records.
+- DILAIT-006 macOS stabilization keeps the verified packet formats unchanged but makes command writes more conservative on Mac mini/CoreBluetooth: one command per fresh Bleak client session, explicit disconnect after every attempt, detailed connect/service/write/disconnect timing logs, and one bounded clean-reconnect retry on macOS if a write fails.
+- BLE connect, service discovery, and write failures are surfaced as command failures. The app should not mark optimistic state as updated when the physical write path raises an error.
 - Sprint 3 intentionally supports the verified LEDnetWF `product_id 0x33` control path first. Other ZENGGE-family variants such as `IOTBT...` remain discoverable but not yet treated as production-supported.
 - `JTX-RGB` remained visible nearby with service `2022`, but it was not pulled into Sprint 3 because it did not match the validated LEDnetWF command path.
 - BJ/Mohuan currently uses optimistic state only. The validated hardware did not provide authoritative notification/readback, and direct reads from `ee01`/`ee02` returned a static test-pattern buffer rather than live state.
