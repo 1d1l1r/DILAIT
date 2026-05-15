@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import platform
+import time
 from dataclasses import dataclass
+from typing import Any
 
 from apps.api.app.core import settings
 
 LOGGER = logging.getLogger(__name__)
+
+MACOS_WRITE_ATTEMPTS = 2
+MACOS_RECONNECT_DELAY_SECONDS = 0.35
 
 
 class BLEAdapterError(RuntimeError):
@@ -38,18 +45,27 @@ class BleakBLEAdapter:
         except Exception as exc:  # noqa: BLE001
             raise BLEAdapterError(f"Bleak is unavailable: {exc}") from exc
 
-        target = await BleakScanner.find_device_by_address(identifier, timeout=settings.ble_connect_timeout_seconds)
-        client_target = target or identifier
-
         try:
-            async with BleakClient(client_target, timeout=settings.ble_connect_timeout_seconds) as client:
+            target = await self._find_device(BleakScanner, identifier)
+            client_target = target or identifier
+            client = BleakClient(client_target, timeout=settings.ble_connect_timeout_seconds)
+            connected = False
+            start = time.monotonic()
+            try:
+                LOGGER.info("BLE inspect connect start identifier=%s target=%s", identifier, self._target_label(client_target))
+                await client.connect()
+                connected = True
+                LOGGER.info("BLE inspect connect ok identifier=%s elapsed_ms=%d", identifier, self._elapsed_ms(start))
                 services = client.services or await client.get_services()
+                LOGGER.info("BLE inspect services ok identifier=%s elapsed_ms=%d", identifier, self._elapsed_ms(start))
                 return self._resolve_characteristics(
                     services=services,
                     preferred_write_uuids=preferred_write_uuids,
                     preferred_read_uuids=preferred_read_uuids,
                     preferred_write_handle=preferred_write_handle,
                 )
+            finally:
+                await self._disconnect_client(client, identifier, "inspect", connected)
         except Exception as exc:  # noqa: BLE001
             raise BLEAdapterError(f"BLE inspection failed for {identifier}: {exc}") from exc
 
@@ -66,29 +82,133 @@ class BleakBLEAdapter:
         except Exception as exc:  # noqa: BLE001
             raise BLEAdapterError(f"Bleak is unavailable: {exc}") from exc
 
-        target = await BleakScanner.find_device_by_address(identifier, timeout=settings.ble_connect_timeout_seconds)
-        client_target = target or identifier
-
-        try:
-            async with BleakClient(client_target, timeout=settings.ble_connect_timeout_seconds) as client:
-                services = client.services or await client.get_services()
-                resolved = self._resolve_characteristics(
-                    services=services,
+        attempts = self._write_attempts()
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self._write_command_once(
+                    BleakClient=BleakClient,
+                    BleakScanner=BleakScanner,
+                    identifier=identifier,
+                    payload=payload,
                     preferred_write_uuids=preferred_write_uuids,
                     preferred_read_uuids=preferred_read_uuids,
                     preferred_write_handle=preferred_write_handle,
+                    attempt=attempt,
+                    attempts=attempts,
                 )
-                LOGGER.info(
-                    "Writing BLE command to %s via %s (handle=%s): %s",
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                LOGGER.warning(
+                    "BLE write attempt failed identifier=%s attempt=%d/%d error=%s",
                     identifier,
-                    resolved.write_uuid,
-                    resolved.write_handle,
-                    payload.hex(" "),
+                    attempt,
+                    attempts,
+                    exc,
+                    exc_info=True,
                 )
-                await client.write_gatt_char(resolved.write_uuid, payload, response=False)
-                return resolved
+                if attempt < attempts:
+                    await asyncio.sleep(MACOS_RECONNECT_DELAY_SECONDS)
+
+        raise BLEAdapterError(f"BLE write failed for {identifier}: {last_error}") from last_error
+
+    async def _write_command_once(
+        self,
+        *,
+        BleakClient,
+        BleakScanner,
+        identifier: str,
+        payload: bytes,
+        preferred_write_uuids: tuple[str, ...],
+        preferred_read_uuids: tuple[str, ...],
+        preferred_write_handle: int | None,
+        attempt: int,
+        attempts: int,
+    ) -> ResolvedBLECharacteristics:
+        target = await self._find_device(BleakScanner, identifier)
+        client_target = target or identifier
+        client = BleakClient(client_target, timeout=settings.ble_connect_timeout_seconds)
+        connected = False
+        start = time.monotonic()
+        try:
+            LOGGER.info(
+                "BLE write connect start identifier=%s target=%s attempt=%d/%d payload=%s",
+                identifier,
+                self._target_label(client_target),
+                attempt,
+                attempts,
+                payload.hex(" "),
+            )
+            await client.connect()
+            connected = True
+            LOGGER.info(
+                "BLE write connect ok identifier=%s attempt=%d/%d elapsed_ms=%d",
+                identifier,
+                attempt,
+                attempts,
+                self._elapsed_ms(start),
+            )
+            services = client.services or await client.get_services()
+            resolved = self._resolve_characteristics(
+                services=services,
+                preferred_write_uuids=preferred_write_uuids,
+                preferred_read_uuids=preferred_read_uuids,
+                preferred_write_handle=preferred_write_handle,
+            )
+            LOGGER.info(
+                "BLE write characteristic resolved identifier=%s uuid=%s handle=%s attempt=%d/%d elapsed_ms=%d",
+                identifier,
+                resolved.write_uuid,
+                resolved.write_handle,
+                attempt,
+                attempts,
+                self._elapsed_ms(start),
+            )
+            await client.write_gatt_char(resolved.write_uuid, payload, response=False)
+            LOGGER.info(
+                "BLE write ok identifier=%s uuid=%s handle=%s attempt=%d/%d elapsed_ms=%d",
+                identifier,
+                resolved.write_uuid,
+                resolved.write_handle,
+                attempt,
+                attempts,
+                self._elapsed_ms(start),
+            )
+            return resolved
+        finally:
+            await self._disconnect_client(client, identifier, "write", connected)
+
+    async def _find_device(self, BleakScanner, identifier: str) -> Any:
+        start = time.monotonic()
+        LOGGER.info("BLE find_device start identifier=%s timeout=%s", identifier, settings.ble_connect_timeout_seconds)
+        target = await BleakScanner.find_device_by_address(identifier, timeout=settings.ble_connect_timeout_seconds)
+        LOGGER.info(
+            "BLE find_device %s identifier=%s elapsed_ms=%d",
+            "hit" if target else "miss",
+            identifier,
+            self._elapsed_ms(start),
+        )
+        return target
+
+    async def _disconnect_client(self, client, identifier: str, operation: str, connected: bool) -> None:
+        if not connected and not bool(getattr(client, "is_connected", False)):
+            return
+
+        start = time.monotonic()
+        try:
+            await client.disconnect()
+            LOGGER.info("BLE %s disconnect ok identifier=%s elapsed_ms=%d", operation, identifier, self._elapsed_ms(start))
         except Exception as exc:  # noqa: BLE001
-            raise BLEAdapterError(f"BLE write failed for {identifier}: {exc}") from exc
+            LOGGER.warning("BLE %s disconnect failed identifier=%s error=%s", operation, identifier, exc, exc_info=True)
+
+    def _write_attempts(self) -> int:
+        return MACOS_WRITE_ATTEMPTS if platform.system() == "Darwin" else 1
+
+    def _target_label(self, target: Any) -> str:
+        return str(getattr(target, "address", None) or target)
+
+    def _elapsed_ms(self, start: float) -> int:
+        return int((time.monotonic() - start) * 1000)
 
     def _resolve_characteristics(
         self,
@@ -137,4 +257,3 @@ class BleakBLEAdapter:
             service_uuids=sorted(set(service_uuids)),
             characteristic_uuids=sorted(set(characteristic_uuids)),
         )
-
