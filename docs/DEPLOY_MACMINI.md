@@ -75,14 +75,18 @@ macOS uses CoreBluetooth under Bleak. In local testing, discovery and onboarding
 - write the validated packet
 - explicitly disconnect
 
-On macOS only, a failed write gets one bounded retry after a short reconnect delay. The retry uses a fresh client/session and preserves the existing packet formats for ELK-BLEDOM/duoCo, ZENGGE/Surplife, and BJ_LED/MohuanLED.
+On macOS only, a failed write gets bounded retries after a short reconnect delay. Each retry uses a fresh client/session. For CoreBluetooth UUID identifiers, the runtime first tries direct connect to avoid an unnecessary scan; if CoreBluetooth reports the device as not found, it performs one scanner lookup and retries against the scanned peripheral object.
+
+ZENGGE-family controllers may require notifications to be enabled on `ff02` before writing to `ff01`, and macOS uses response writes when the characteristic advertises `write`. BJ_LED/MohuanLED controllers write to the observed `ee01` handle without notifications; because this is a write-without-response path, macOS leaves a short flush delay before disconnecting and paces repeated commands to the same device. First command latency may be higher when macOS has to refresh CoreBluetooth's peripheral cache.
 
 Useful logs to inspect when a Mac mini stops controlling a physical light:
 
 - `BLE find_device start/hit/miss`
 - `BLE write connect start/ok`
 - `BLE write characteristic resolved`
+- `BLE notify start/stop ok`
 - `BLE write ok`
+- `BLE write direct connect miss`
 - `BLE write attempt failed`
 - `BLE write disconnect ok/failed`
 

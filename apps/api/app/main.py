@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape
+import logging
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -81,6 +82,13 @@ from apps.api.app.services import (
     update_scene,
 )
 
+APP_LOGGER = logging.getLogger("apps")
+APP_LOGGER.setLevel(logging.INFO)
+if not APP_LOGGER.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+    APP_LOGGER.addHandler(handler)
+APP_LOGGER.propagate = False
 
 scheduler_engine = SchedulerEngine(settings.scheduler_poll_seconds)
 
