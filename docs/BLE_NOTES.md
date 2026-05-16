@@ -94,17 +94,17 @@
 ## Working BJ_LED command notes
 
 - Verified power-on packet:
-  - `69 96 02 01 01`
+  - `69 96 06 01 01`
 - Verified power-off packet:
   - `69 96 02 01 00`
 - Verified RGB packet for solid red:
-  - `69 96 05 02 ff 00 00`
+  - `69 96 05 02 ff 00 00 ff`
 - Verified brightness behavior:
   - there is no separate brightness opcode in the validated profile
   - brightness is implemented by scaling RGB channels before sending the color packet
   - example verified `30%` red payload:
-    `69 96 05 02 4c 00 00`
-- This matches the minimal MohuanLED/BJ behavior documented by the upstream Home Assistant custom integration and its snoop notes.
+    `69 96 05 02 4c 00 00 4c`
+- The fourth color byte is the white/max channel used by the upstream BJ_LED/MohuanLED command shape.
 
 ## ELK-BLEDOM validated GATT shape
 
@@ -178,7 +178,12 @@
 
 - Live state readback is still optimistic in our app layer; we are not relying on notifications for authoritative state yet.
 - Visual confirmation of each command still depends on observing the physical strip; the terminal validation confirms successful BLE writes and successful scheduler execution records.
-- Sprint 3 intentionally supports the verified LEDnetWF `product_id 0x33` control path first. Other ZENGGE-family variants such as `IOTBT...` remain discoverable but not yet treated as production-supported.
+- DILAIT-006 macOS stabilization makes command writes more conservative on Mac mini/CoreBluetooth: one command per fresh Bleak client session, explicit disconnect after every attempt, detailed connect/service/write/disconnect timing logs, and bounded clean-reconnect retries on macOS if a write fails.
+- On macOS, CoreBluetooth UUIDs are attempted directly first; if direct connect reports the device as not found, the write path performs one scanner lookup and reconnects to the scanned peripheral object. This keeps normal commands fast while recovering from stale CoreBluetooth cache misses seen with BJ_LED devices.
+- ZENGGE-family controllers that expose `ff01`/`ff02` enable notify on `ff02` before writes and use response writes when `ff01` advertises `write`. This was required for the `IOTBTF53` / product `0x6400` path tested on Mac mini.
+- BJ_LED/MohuanLED uses `write-without-response` on `ee01`, so the macOS path waits briefly after the write before disconnecting and enforces a short per-device pacing gap before the next no-response write. Without that pacing, rapid UI clicks can queue commands that the physical controller applies later as a stale burst.
+- BLE connect, service discovery, and write failures are surfaced as command failures. The app should not mark optimistic state as updated when the physical write path raises an error.
+- Sprint 3 initially supported the verified LEDnetWF `product_id 0x33` control path. DILAIT-006 also adds the Mac-tested `IOTBT...` / `product_id 0x6400` / BLE v35 ZENGGE path.
 - `JTX-RGB` remained visible nearby with service `2022`, but it was not pulled into Sprint 3 because it did not match the validated LEDnetWF command path.
 - BJ/Mohuan currently uses optimistic state only. The validated hardware did not provide authoritative notification/readback, and direct reads from `ee01`/`ee02` returned a static test-pattern buffer rather than live state.
 - Sprint 4 intentionally supports one verified BJ/Mohuan profile first: advertised `BJ_LED` with `eea0 / ee01 / ee02`.

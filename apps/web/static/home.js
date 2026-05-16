@@ -71,6 +71,7 @@ const state = {
   history: [],
   refreshTimer: null,
   toastTimer: null,
+  pendingDeviceActions: new Set(),
 };
 
 const CHROME_COPY = {
@@ -677,14 +678,24 @@ function applyLocalTargetPatch(targetType, targetId, actionName, payload = {}) {
 }
 
 async function handleDeviceAction(deviceId, actionName, payload = null) {
-  const response = await api(`/api/devices/${deviceId}/${actionName}`, {
-    method: "POST",
-    headers: payload ? jsonHeaders : undefined,
-    body: payload ? JSON.stringify(payload) : undefined,
-  });
-  syncDeviceInState(response);
-  renderScreen();
-  enqueueRefresh();
+  if (state.pendingDeviceActions.has(deviceId)) {
+    showToast(lang("Команда уже отправляется.", "Command already in progress."));
+    return null;
+  }
+  state.pendingDeviceActions.add(deviceId);
+  try {
+    const response = await api(`/api/devices/${deviceId}/${actionName}`, {
+      method: "POST",
+      headers: payload ? jsonHeaders : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
+    });
+    syncDeviceInState(response);
+    return response;
+  } finally {
+    state.pendingDeviceActions.delete(deviceId);
+    renderScreen();
+    enqueueRefresh();
+  }
 }
 
 async function runRoomAction(roomId, actionName, payload = null) {
@@ -744,17 +755,18 @@ async function handleSceneRun(sceneId) {
 
 function discoveryGroups() {
   const candidates = state.discovery || [];
+  const visibleCandidates = candidates.filter((candidate) => candidate.source !== "mock");
   const onboarded = new Map(state.devices.map((device) => [device.ble_identifier, device]));
   return {
-    supported: candidates.filter(
+    supported: visibleCandidates.filter(
       (candidate) =>
         candidate.source === "real" &&
         candidate.is_supported &&
         candidate.family !== "mock" &&
         !onboarded.has(candidate.ble_identifier),
     ),
-    existing: candidates.filter((candidate) => onboarded.has(candidate.ble_identifier)),
-    other: candidates.filter(
+    existing: visibleCandidates.filter((candidate) => onboarded.has(candidate.ble_identifier)),
+    other: visibleCandidates.filter(
       (candidate) =>
         !(
           candidate.source === "real" &&
@@ -2744,6 +2756,8 @@ function bindDeviceCards() {
   els.content.querySelectorAll("[data-device-toggle]").forEach((button) => {
     button.addEventListener("click", async () => {
       const deviceId = Number(button.dataset.deviceToggle);
+      if (state.pendingDeviceActions.has(deviceId)) return;
+      button.disabled = true;
       const device = deviceById(deviceId);
       await handleDeviceAction(deviceId, deviceState(device).is_on ? "off" : "on");
     });
@@ -2752,6 +2766,8 @@ function bindDeviceCards() {
   els.content.querySelectorAll("[data-device-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       const deviceId = Number(button.dataset.deviceAction);
+      if (state.pendingDeviceActions.has(deviceId)) return;
+      button.disabled = true;
       const actionName = button.dataset.actionName;
       if (actionName === "brightness") {
         const input = els.content.querySelector(`[data-device-brightness="${deviceId}"]`);

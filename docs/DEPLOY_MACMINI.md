@@ -65,7 +65,42 @@ If the page does not load from the phone:
 - check macOS firewall settings
 - confirm the server is bound to `0.0.0.0`
 
-## 5. Optional environment variables
+## 5. BLE runtime notes on macOS
+
+macOS uses CoreBluetooth under Bleak. In local testing, discovery and onboarding can work even when repeated command writes become unstable after the first physical command. The runtime now treats each command as an isolated BLE session:
+
+- resolve the current device through Bleak
+- connect
+- discover services/characteristics
+- write the validated packet
+- explicitly disconnect
+
+On macOS only, a failed write gets bounded retries after a short reconnect delay. Each retry uses a fresh client/session. For CoreBluetooth UUID identifiers, the runtime first tries direct connect to avoid an unnecessary scan; if CoreBluetooth reports the device as not found, it performs one scanner lookup and retries against the scanned peripheral object.
+
+ZENGGE-family controllers may require notifications to be enabled on `ff02` before writing to `ff01`, and macOS uses response writes when the characteristic advertises `write`. BJ_LED/MohuanLED controllers write to the observed `ee01` handle without notifications; because this is a write-without-response path, macOS leaves a short flush delay before disconnecting and paces repeated commands to the same device. First command latency may be higher when macOS has to refresh CoreBluetooth's peripheral cache.
+
+Useful logs to inspect when a Mac mini stops controlling a physical light:
+
+- `BLE find_device start/hit/miss`
+- `BLE write connect start/ok`
+- `BLE write characteristic resolved`
+- `BLE notify start/stop ok`
+- `BLE write ok`
+- `BLE write direct connect miss`
+- `BLE write attempt failed`
+- `BLE write disconnect ok/failed`
+
+If the API returns a BLE failure, treat it as a real command failure. The app should not update optimistic device state when connect, service discovery, or write fails.
+
+Manual smoke for one nearby real device:
+
+1. start the app without restarting between commands
+2. use one already-onboarded device
+3. run: off -> wait -> on -> wait -> color -> wait -> off -> on
+4. confirm the physical light reacts every time
+5. check logs for reconnects or write failures
+
+## 6. Optional environment variables
 
 DILIAT can read simple process environment variables:
 
@@ -80,7 +115,7 @@ DILIAT can read simple process environment variables:
 
 See the root `.env.example` for a reference list. The app does not auto-load `.env`; set values in your shell or service definition if needed.
 
-## 6. Basic persistence and backup
+## 7. Basic persistence and backup
 
 Default database location:
 
@@ -94,7 +129,7 @@ Simple backup recommendation:
 
 That is enough for MVP use. There is no separate backup subsystem yet.
 
-## 7. Optional auto-start with launchd
+## 8. Optional auto-start with launchd
 
 A sample plist is included here:
 

@@ -147,6 +147,15 @@ ZENGGE_PROFILES = (
         preferred_write_uuids=(ZENGGE_WRITE_UUID,),
         preferred_read_uuids=(ZENGGE_NOTIFY_UUID,),
     ),
+    ZenggeProfile(
+        key="zengge_iotbt_0x6400_v35",
+        family=DeviceFamily.ZENGGE.value,
+        product_ids=(0x6400,),
+        ble_versions=(0x23,),
+        name_prefixes=("iotbt",),
+        preferred_write_uuids=(ZENGGE_WRITE_UUID,),
+        preferred_read_uuids=(ZENGGE_NOTIFY_UUID,),
+    ),
 )
 
 ZENGGE_PROFILE_INDEX = {profile.key: profile for profile in ZENGGE_PROFILES}
@@ -247,6 +256,10 @@ class ELKBledomDriver:
         return [self._scan_result_to_candidate(item) for item in results]
 
     async def probe(self, ble_identifier: str, name: str | None = None) -> ProbeResult:
+        if ble_identifier.startswith("mock://"):
+            profile = self._pick_profile(name=name, family_hint=self.family)
+            return ProbeResult(family=profile.family, capabilities=ELK_BLEDOM_CAPABILITIES.copy(), metadata={"simulated": True, "driver_profile": profile.key})
+
         profile = self._pick_profile(name=name, family_hint=self.family)
         resolved = await self._adapter.inspect_characteristics(
             identifier=ble_identifier,
@@ -331,6 +344,10 @@ class ELKBledomDriver:
                 write_uuid=ble_meta["write_uuid"],
                 read_uuid=ble_meta.get("read_uuid"),
                 write_handle=ble_meta.get("write_handle"),
+                read_handle=ble_meta.get("read_handle"),
+                write_properties=ble_meta.get("write_properties", []),
+                read_properties=ble_meta.get("read_properties", []),
+                write_response=bool(ble_meta.get("write_response", False)),
                 service_uuids=ble_meta.get("service_uuids", []),
                 characteristic_uuids=ble_meta.get("characteristic_uuids", []),
             )
@@ -386,6 +403,10 @@ class ELKBledomDriver:
             "write_uuid": resolved.write_uuid,
             "read_uuid": resolved.read_uuid,
             "write_handle": resolved.write_handle,
+            "read_handle": resolved.read_handle,
+            "write_properties": resolved.write_properties,
+            "read_properties": resolved.read_properties,
+            "write_response": resolved.write_response,
             "service_uuids": resolved.service_uuids,
             "characteristic_uuids": resolved.characteristic_uuids,
         }
@@ -487,6 +508,7 @@ class ZenggeDriver:
                 payload=payload,
                 preferred_write_uuids=profile.preferred_write_uuids,
                 preferred_read_uuids=profile.preferred_read_uuids,
+                preferred_write_handle=((device.meta_json or {}).get("ble") or {}).get("write_handle"),
             )
         except BLEAdapterError as exc:
             LOGGER.error("ZENGGE command failed for %s: %s", device.name, exc, exc_info=True)
@@ -573,6 +595,10 @@ class ZenggeDriver:
             "write_uuid": resolved.write_uuid,
             "read_uuid": resolved.read_uuid,
             "write_handle": resolved.write_handle,
+            "read_handle": resolved.read_handle,
+            "write_properties": resolved.write_properties,
+            "read_properties": resolved.read_properties,
+            "write_response": resolved.write_response,
             "service_uuids": resolved.service_uuids,
             "characteristic_uuids": resolved.characteristic_uuids,
         }
@@ -682,7 +708,8 @@ class BJLEDDriver:
                 identifier=device.ble_identifier,
                 payload=payload,
                 preferred_write_uuids=profile.preferred_write_uuids,
-                preferred_read_uuids=profile.preferred_read_uuids,
+                preferred_read_uuids=(),
+                preferred_write_handle=((device.meta_json or {}).get("ble") or {}).get("write_handle"),
             )
         except BLEAdapterError as exc:
             LOGGER.error("BJ_LED command failed for %s: %s", device.name, exc, exc_info=True)
@@ -729,7 +756,7 @@ class BJLEDDriver:
         return {"r": 255, "g": 255, "b": 255}
 
     def _build_power_command(self, turn_on: bool) -> bytes:
-        return bytes.fromhex("69 96 02 01 01" if turn_on else "69 96 02 01 00")
+        return bytes.fromhex("69 96 06 01 01" if turn_on else "69 96 02 01 00")
 
     def _build_color_command(self, r: int, g: int, b: int, brightness: int) -> bytes:
         brightness_pct = max(0, min(int(brightness), 100))
@@ -737,7 +764,7 @@ class BJLEDDriver:
             max(0, min(int(channel * brightness_pct / 100), 255))
             for channel in (r, g, b)
         ]
-        return bytes([0x69, 0x96, 0x05, 0x02, *scaled])
+        return bytes([0x69, 0x96, 0x05, 0x02, *scaled, max(scaled)])
 
     def _resolved_metadata(
         self,
@@ -754,6 +781,10 @@ class BJLEDDriver:
             "write_uuid": resolved.write_uuid,
             "read_uuid": resolved.read_uuid,
             "write_handle": resolved.write_handle,
+            "read_handle": resolved.read_handle,
+            "write_properties": resolved.write_properties,
+            "read_properties": resolved.read_properties,
+            "write_response": resolved.write_response,
             "service_uuids": resolved.service_uuids,
             "characteristic_uuids": resolved.characteristic_uuids,
             "platform_identifier": metadata.get("platform_identifier"),
