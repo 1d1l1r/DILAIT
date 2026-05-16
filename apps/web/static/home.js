@@ -1,3 +1,5 @@
+import { chromeCopy as getChromeCopy, dayLabel as getDayLabel, legacyText, normalizeLocale } from "./home-i18n.js?v=20260516a";
+
 const jsonHeaders = { "Content-Type": "application/json" };
 
 const DAY_BITS = {
@@ -11,16 +13,6 @@ const DAY_BITS = {
 };
 
 const DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-const DAY_LABELS = {
-  mon: "Mon",
-  tue: "Tue",
-  wed: "Wed",
-  thu: "Thu",
-  fri: "Fri",
-  sat: "Sat",
-  sun: "Sun",
-};
-
 const COMMON_TIMEZONES = [
   "Asia/Qyzylorda",
   "Asia/Almaty",
@@ -66,7 +58,7 @@ const state = {
   discovery: null,
   selectedCandidate: null,
   timezones: [],
-  locale: window.localStorage.getItem("lights-hub-locale") || "ru",
+  locale: normalizeLocale(window.localStorage.getItem("lights-hub-locale") || "ru"),
   screen: { name: "home", params: {} },
   history: [],
   refreshTimer: null,
@@ -74,51 +66,16 @@ const state = {
   pendingDeviceActions: new Set(),
 };
 
-const CHROME_COPY = {
-  ru: {
-    refresh: "Обновить",
-    refreshing: "Обновление...",
-    back: "Назад",
-    advanced: "Расширенный",
-    home: "Главная",
-    kicker: "Локальный свет",
-    subtitle: "Управление светом по комнатам на каждый день.",
-    footerLabel: "Язык",
-    dock: {
-      "add-room": "Комната+",
-      "add-device": "Свет+",
-      "add-group": "Группа+",
-      "add-scene": "Сцена+",
-      "add-schedule": "Правило+",
-      "add-link": "Ссылка+",
-    },
-  },
-  en: {
-    refresh: "Refresh",
-    refreshing: "Refreshing...",
-    back: "Back",
-    advanced: "Advanced",
-    home: "Home",
-    kicker: "Local lights",
-    subtitle: "Rooms first control for everyday use.",
-    footerLabel: "Language",
-    dock: {
-      "add-room": "Room+",
-      "add-device": "Light+",
-      "add-group": "Group+",
-      "add-scene": "Scene+",
-      "add-schedule": "Rule+",
-      "add-link": "Link+",
-    },
-  },
-};
-
 function chromeCopy() {
-  return CHROME_COPY[state.locale] || CHROME_COPY.ru;
+  return getChromeCopy(state.locale);
 }
 
 function lang(ru, en) {
-  return state.locale === "en" ? en : ru;
+  return legacyText(state.locale, ru, en);
+}
+
+function dayLabel(day) {
+  return getDayLabel(state.locale, day);
 }
 
 function pluralRu(count, one, few, many) {
@@ -531,7 +488,7 @@ function describeDays(mask) {
   if (mask === weekdays) return lang("Будни", "Weekdays");
   if (mask === weekends) return lang("Выходные", "Weekends");
   return DAY_ORDER.filter((day) => (mask & DAY_BITS[day]) > 0)
-    .map((day) => DAY_LABELS[day])
+    .map((day) => dayLabel(day))
     .join(", ");
 }
 
@@ -1949,7 +1906,7 @@ function scheduleFormMarkup(rule = null) {
           <label class="choice-chip"><input type="radio" name="day_mode" value="custom"${data.day_mode === "custom" ? " checked" : ""} /><span>${lang("Свои", "Custom")}</span></label>
         </div>
         <div class="chip-row${customDays ? "" : " is-hidden"}" id="custom-days">
-          ${DAY_ORDER.map((day) => `<label class="choice-chip"><input type="checkbox" name="custom_day" value="${day}"${data.days_mask & DAY_BITS[day] ? " checked" : ""} /><span>${DAY_LABELS[day]}</span></label>`).join("")}
+          ${DAY_ORDER.map((day) => `<label class="choice-chip"><input type="checkbox" name="custom_day" value="${day}"${data.days_mask & DAY_BITS[day] ? " checked" : ""} /><span>${dayLabel(day)}</span></label>`).join("")}
         </div>
       </div>
 
@@ -2572,11 +2529,16 @@ const EXTRA_TEXT_REPLACEMENTS = [
 ];
 
 function applyTextReplacements() {
-  const map = new Map(
-    [...TEXT_REPLACEMENTS, ...EXTRA_TEXT_REPLACEMENTS].map(([ru, en]) =>
-      state.locale === "en" ? [ru, en] : [en, ru],
-    ),
-  );
+  const map = new Map();
+  [...TEXT_REPLACEMENTS, ...EXTRA_TEXT_REPLACEMENTS].forEach(([ru, en]) => {
+    const localized = legacyText(state.locale, ru, en);
+    if (state.locale === "ru") map.set(en, localized);
+    if (state.locale === "en") map.set(ru, localized);
+    if (state.locale === "kk") {
+      map.set(ru, localized);
+      map.set(en, localized);
+    }
+  });
   const nodes = els.content.querySelectorAll("button, p, h2, h3, strong, span, a, summary, label");
   nodes.forEach((node) => {
     if (node.children.length) return;
@@ -3115,7 +3077,7 @@ els.dockButtons.forEach((button) => {
 
 els.localeButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    state.locale = button.dataset.locale;
+    state.locale = normalizeLocale(button.dataset.locale);
     window.localStorage.setItem("lights-hub-locale", state.locale);
     applyChromeCopy();
     renderScreen();
