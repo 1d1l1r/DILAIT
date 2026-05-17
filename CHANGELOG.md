@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Everyday UI localization now supports RU / EN / KK through the normalized frontend i18n layer.
+
 ## v0.1.0 - MVP complete
 
 First usable local release of DILIAT.

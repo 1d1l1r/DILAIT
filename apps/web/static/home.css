@@ -399,6 +399,8 @@ button {
   display: grid;
   gap: 6px;
   align-content: start;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .field span,
@@ -418,7 +420,9 @@ button {
 input,
 select,
 textarea {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
   min-height: 48px;
   padding: 12px 14px;
   border: 1px solid var(--line-strong);
@@ -439,6 +443,16 @@ input[type="color"] {
 
 input[type="range"] {
   padding-inline: 0;
+}
+
+input[type="time"],
+input[type="datetime-local"] {
+  display: block;
+  appearance: none;
+  -webkit-appearance: none;
+  inline-size: 100%;
+  min-width: 0;
+  text-align: center;
 }
 
 .inline-actions {
