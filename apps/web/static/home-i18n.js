@@ -254,6 +254,8 @@ const KK = {
   "Save schedule": "Кестені сақтау",
   "Scan for supported lights and onboard them without drowning in BLE noise.": "BLE шуына батпай, қолдайтын жарықтарды тауып қос.",
   "Scan for lights": "Жарықтарды іздеу",
+  "Scanning...": "Ізделуде...",
+  "Looking for nearby supported lights. On Windows, BLE scanning may take a few seconds.": "Жақын жердегі қолдайтын жарықтар ізделуде. Windows-та BLE іздеуі бірнеше секунд алуы мүмкін.",
   "Schedule": "Кесте",
   "Schedule created": "Кесте жасалды",
   "Schedule deleted": "Кесте жойылды",

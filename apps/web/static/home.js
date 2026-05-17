@@ -741,10 +741,13 @@ async function refreshDiscovery() {
   const status = els.content.querySelector('[data-role="discovery-status"]');
   if (button) {
     button.disabled = true;
-    button.textContent = "Сканирование...";
+    button.textContent = lang("Сканирование...", "Scanning...");
   }
   if (status) {
-    status.textContent = "Идёт поиск ближайших поддерживаемых ламп. На Windows BLE-сканирование может занять несколько секунд.";
+    status.textContent = lang(
+      "Идёт поиск ближайших поддерживаемых ламп. На Windows BLE-сканирование может занять несколько секунд.",
+      "Looking for nearby supported lights. On Windows, BLE scanning may take a few seconds.",
+    );
   }
   const startedAt = performance.now();
   try {
@@ -752,7 +755,10 @@ async function refreshDiscovery() {
     const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
     const groups = discoveryGroups();
     if (status) {
-      status.textContent = `Сканирование завершено за ${elapsed} c. Новых поддерживаемых ламп: ${groups.supported.length}.`;
+      status.textContent = lang(
+        `Сканирование завершено за ${elapsed} c. Новых поддерживаемых ламп: ${groups.supported.length}.`,
+        `Scan finished in ${elapsed}s. New supported lights: ${groups.supported.length}.`,
+      );
     }
     renderScreen();
   } catch (error) {
@@ -764,7 +770,7 @@ async function refreshDiscovery() {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = "Искать лампы";
+      button.textContent = lang("Сканировать свет", "Scan for lights");
     }
   }
 }
