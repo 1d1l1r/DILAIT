@@ -1,5 +1,7 @@
 # DILIAT
 
+![DILIAT mobile UI](docs/assets/diliat-readme-hero.png)
+
 Local-first BLE lights hub for home use.
 
 DILIAT is a FastAPI + SQLite app for controlling BLE LED controllers from a phone on the same Wi-Fi network. It includes a human-first mobile UI at `/`, an admin/debug panel at `/advanced`, mixed-family groups and scenes, schedules, and tokenized local action links for shortcuts or NFC tags.
@@ -25,6 +27,7 @@ Validated baseline:
   - astronomical
 - action links / NFC-ready tokenized URLs
 - human-first mobile UI at `/`
+- everyday UI language switcher for RU / EN / KK
 - admin/debug UI at `/advanced`
 
 ## Routes
